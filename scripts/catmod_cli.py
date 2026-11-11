@@ -4,6 +4,7 @@
   catmod_cli.py fetch                       # extract template files from the local game install
   catmod_cli.py build PHOTO [options]       # build VPK (+ previews, + install / copy to Downloads)
   catmod_cli.py calibrate PHOTO [options]   # VPK with labelled alpha/roughness bands for in-game tests
+  catmod_cli.py uvtest PHOTO [options]      # diagnostic: half sphere f16 UVs (orange bg), half snorm (teal)
   catmod_cli.py uninstall                   # remove the directly installed pak09
 
 Outputs go next to -o (default build/): pak01_dir.vpk, preview.png (renders), preview.html (3D).
@@ -52,6 +53,8 @@ def add_photo_args(b):
     b.add_argument("--roughness", type=float, default=0.69)
     b.add_argument("--back", choices=["mirror", "flip", "color"], default="mirror", help="wrap layout only")
     b.add_argument("--rotate", type=float, default=0.0)
+    b.add_argument("--uv-encoding", choices=["snorm", "f16", "split"], default="snorm",
+                   help="how vertex UVs are stored (diagnostic)")
     b.add_argument("--no-preview", action="store_true", help="skip preview.png / preview.html")
     b.add_argument("--open", action="store_true", help="open preview.html in the browser")
     b.add_argument("--install", action="store_true",
@@ -115,6 +118,7 @@ def main():
     f.add_argument("--citadel", type=Path, default=templates.DEFAULT_CITADEL)
     add_photo_args(sub.add_parser("build"))
     add_photo_args(sub.add_parser("calibrate"))
+    add_photo_args(sub.add_parser("uvtest"))
     sub.add_parser("uninstall")
     a = ap.parse_args()
 
@@ -125,7 +129,18 @@ def main():
         uninstall()
     elif a.cmd == "build":
         params = params_from(a)
-        finish(a, build_mod(a.photo, params), params.roughness)
+        finish(a, build_mod(a.photo, params, uv_encoding=a.uv_encoding), params.roughness)
+    elif a.cmd == "uvtest":
+        import dataclasses
+        import numpy as np
+        from PIL import Image
+        from catmod.photo import sphere_texture
+        params = params_from(a)
+        teal =np.asarray(sphere_texture(a.photo, params))
+        orange = np.asarray(sphere_texture(a.photo, dataclasses.replace(params, bg_color=(255, 120, 0))))
+        half = teal.shape[1] // 2
+        tex = Image.fromarray(np.concatenate([orange[:, :half], teal[:, half:]], 1), "RGBA")
+        finish(a, build_mod(None, params, texture=tex, uv_encoding="split"), params.roughness)
     elif a.cmd == "calibrate":
         from catmod.calibrate import calibration_maps
         params = params_from(a)

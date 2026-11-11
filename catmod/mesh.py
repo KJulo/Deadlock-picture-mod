@@ -74,10 +74,13 @@ def sphere_grid(max_vertices: int, max_triangles: int) -> tuple[int, int]:
     return best
 
 
-def uv_sphere(radius: float, nu: int, nv: int):
-    """Positions, uvs, normals, tangents, triangle indices of a UV sphere (seam duplicated)."""
+def uv_sphere(radius: float, nu: int, nv: int, u0: float = 0.0, u1: float = 1.0):
+    """Positions, uvs, normals, tangents, triangle indices of a UV sphere (seam duplicated).
+
+    u0..u1 selects a longitude range (patch) of the sphere; the default is the full sphere.
+    """
     j, i = np.meshgrid(np.arange(nv + 1), np.arange(nu + 1), indexing="ij")
-    u = (i / nu).ravel()
+    u = (u0 + (u1 - u0) * i / nu).ravel()
     v = (j / nv).ravel()
     th, ph = v * np.pi, u * 2 * np.pi
     n = np.stack([np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph), np.cos(th)], 1)
@@ -90,20 +93,45 @@ def uv_sphere(radius: float, nu: int, nv: int):
     return n * radius, np.stack([u, v], 1), n, t, tris
 
 
-def build_buffers(vertex_count: int, index_count: int, radius: float):
+def encode_uv(uv: np.ndarray, encoding: str) -> np.ndarray:
+    """4 bytes per vertex. 'snorm' = R16G16_SNORM (what the layout declares, format 37);
+    'f16' = R16G16_FLOAT bit patterns (diagnostic: the in-game look matched a half-float decode)."""
+    uv = np.clip(uv, 0, 1)
+    if encoding == "snorm":
+        return np.rint(uv * 32767).astype(np.int16).view(np.uint8).reshape(-1, 4)
+    if encoding == "f16":
+        return uv.astype(np.float16).view(np.uint8).reshape(-1, 4)
+    raise ValueError(encoding)
+
+
+def build_buffers(vertex_count: int, index_count: int, radius: float, uv_encoding: str = "snorm"):
     """Vertex bytes (vertex_count * 24) and uint32 indices (index_count) for a padded sphere.
 
     The counts must equal the original LOD's so the model's metadata stays valid: unused vertices
     duplicate vertex 0 and unused indices form degenerate (invisible) triangles.
+    uv_encoding 'split' = diagnostic: longitudes u<0.5 use 'f16', u>=0.5 use 'snorm'.
     """
     nu, nv = sphere_grid(vertex_count, index_count // 3)
-    pos, uv, n, t, tris = uv_sphere(radius, nu, nv)
+    if uv_encoding == "split":
+        half = nu // 2
+        parts = [uv_sphere(radius, half, nv, 0.0, 0.5) + ("f16",),
+                 uv_sphere(radius, half, nv, 0.5, 1.0) + ("snorm",)]
+        if sum(len(p[0]) for p in parts) > vertex_count:
+            raise ValueError("vertex budget exceeded for split sphere")
+    else:
+        parts = [uv_sphere(radius, nu, nv) + (uv_encoding,)]
+    pos = np.concatenate([p[0] for p in parts])
+    n = np.concatenate([p[2] for p in parts])
+    t = np.concatenate([p[3] for p in parts])
+    offsets = np.cumsum([0] + [len(p[0]) for p in parts[:-1]])
+    tris = np.concatenate([p[4] + o for p, o in zip(parts, offsets)])
+    uvb = np.concatenate([encode_uv(p[1], p[5]) for p in parts])
     nvert = len(pos)
     packed = pack_tangent_frame(n, t, np.ones(nvert))
     vb = np.zeros((vertex_count, VERTEX_SIZE), np.uint8)
     rec = np.zeros((nvert, VERTEX_SIZE), np.uint8)
     rec[:, 0:12] = pos.astype(np.float32).view(np.uint8).reshape(nvert, 12)
-    rec[:, 12:16] = np.rint(np.clip(uv, 0, 1) * 32767).astype(np.int16).view(np.uint8).reshape(nvert, 4)
+    rec[:, 12:16] = uvb
     rec[:, 16:20] = packed.astype(np.uint32).view(np.uint8).reshape(nvert, 4)
     vb[:nvert] = rec
     vb[nvert:] = rec[0]

@@ -32,6 +32,7 @@ class ModResult:
     files: dict[str, bytes]       # game path -> compiled file
     texture: Image.Image          # the composed color texture (for previews)
     grids: list                   # sphere resolution per LOD
+    uv_encoding: str = "snorm"
 
     def vpk_bytes(self) -> bytes:
         with tempfile.TemporaryDirectory() as tmp:
@@ -45,11 +46,13 @@ class ModResult:
             return out.read_bytes()
 
     def preview_mesh(self, lod: int = 0):
-        return decode_lod(self.files[templates.MODEL.game_path], lod)
+        enc = "snorm" if self.uv_encoding == "split" else self.uv_encoding
+        return decode_lod(self.files[templates.MODEL.game_path], lod, enc)
 
 
 def build_mod(photo, params: PhotoParams | None = None, shape: str = "sphere",
-              texture: Image.Image | None = None, roughness_map: Image.Image | None = None) -> ModResult:
+              texture: Image.Image | None = None, roughness_map: Image.Image | None = None,
+              uv_encoding: str = "snorm") -> ModResult:
     """shape='sphere': sphere geometry + photo wrapped around it.
 
     `photo` is a path, file-like object or PIL image. `texture` (RGBA equirect) and
@@ -63,7 +66,7 @@ def build_mod(photo, params: PhotoParams | None = None, shape: str = "sphere",
     if texture is None:
         texture = sphere_texture(photo, params)  # RGBA, alpha = params.color_alpha
 
-    model, grids = build_sphere_model(templates.load(templates.MODEL))
+    model, grids = build_sphere_model(templates.load(templates.MODEL), uv_encoding=uv_encoding)
     color_tpl = templates.load(templates.COLOR)
     nr_tpl = templates.load(templates.NORMAL_ROUGH)
     ao_tpl = templates.load(templates.AO)
@@ -75,4 +78,4 @@ def build_mod(photo, params: PhotoParams | None = None, shape: str = "sphere",
         templates.NORMAL_ROUGH.game_path: vtex.rebuild(nr_tpl, _normal_rough(size, params, roughness_map)),
         templates.AO.game_path: vtex.rebuild(ao_tpl, constant=255),  # no baked occlusion
     }
-    return ModResult(files, texture, grids)
+    return ModResult(files, texture, grids, uv_encoding)
