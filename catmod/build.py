@@ -19,6 +19,14 @@ def normal_rough_rgba(roughness: float):
     return (128, 128, round(roughness * 255), 255)
 
 
+def _normal_rough(size: int, params: PhotoParams, roughness_map: Image.Image | None) -> Image.Image:
+    img = Image.new("RGBA", (size, size), normal_rough_rgba(params.roughness))
+    if roughness_map is not None:
+        r, g, _, a = img.split()
+        img = Image.merge("RGBA", (r, g, roughness_map.convert("L").resize((size, size)), a))
+    return img
+
+
 @dataclass
 class ModResult:
     files: dict[str, bytes]       # game path -> compiled file
@@ -40,17 +48,20 @@ class ModResult:
         return decode_lod(self.files[templates.MODEL.game_path], lod)
 
 
-def build_mod(photo, params: PhotoParams | None = None, shape: str = "sphere") -> ModResult:
+def build_mod(photo, params: PhotoParams | None = None, shape: str = "sphere",
+              texture: Image.Image | None = None, roughness_map: Image.Image | None = None) -> ModResult:
     """shape='sphere': sphere geometry + photo wrapped around it.
 
-    `photo` is a path, file-like object or PIL image.
+    `photo` is a path, file-like object or PIL image. `texture` (RGBA equirect) and
+    `roughness_map` (L, 0..255) override the generated ones (used by the calibration build).
     """
     if shape != "sphere":
         raise NotImplementedError(shape)
-    if not isinstance(photo, (str, Path, Image.Image)):
+    if photo is not None and not isinstance(photo, (str, Path, Image.Image)):
         photo = Image.open(io.BytesIO(photo.read() if hasattr(photo, "read") else photo))
     params = (params or PhotoParams()).validate()
-    texture = sphere_texture(photo, params)  # RGBA, alpha = metalness
+    if texture is None:
+        texture = sphere_texture(photo, params)  # RGBA, alpha = params.color_alpha
 
     model, grids = build_sphere_model(templates.load(templates.MODEL))
     color_tpl = templates.load(templates.COLOR)
@@ -61,8 +72,7 @@ def build_mod(photo, params: PhotoParams | None = None, shape: str = "sphere") -
     files = {
         templates.MODEL.game_path: model,
         templates.COLOR.game_path: vtex.rebuild(color_tpl, texture.resize((size, size), Image.LANCZOS)),
-        templates.NORMAL_ROUGH.game_path: vtex.rebuild(
-            nr_tpl, Image.new("RGBA", (size, size), normal_rough_rgba(params.roughness))),
+        templates.NORMAL_ROUGH.game_path: vtex.rebuild(nr_tpl, _normal_rough(size, params, roughness_map)),
         templates.AO.game_path: vtex.rebuild(ao_tpl, constant=255),  # no baked occlusion
     }
     return ModResult(files, texture, grids)

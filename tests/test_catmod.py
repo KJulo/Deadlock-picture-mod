@@ -58,9 +58,9 @@ def test_sphere_texture_shape_and_front():
         # front centre of the sphere = u 0 / v 0.5 -> texel column 0, middle row
         r, g, b, a = tex.getpixel((0, 128))
         assert g > r, layout
-        assert a == 0  # metalness 0 by default (alpha = metalness)
-    tex = sphere_texture(photo, PhotoParams(metalness=1.0), size=64)
-    assert tex.getpixel((0, 32))[3] == 255
+        assert a == 255  # colour alpha 1.0 by default (0 renders black in game)
+    tex = sphere_texture(photo, PhotoParams(color_alpha=0.0), size=64)
+    assert tex.getpixel((0, 32))[3] == 0
 
 
 @needs_templates

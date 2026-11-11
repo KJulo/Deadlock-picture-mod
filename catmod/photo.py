@@ -20,9 +20,10 @@ Photo framing (shared by all layouts):
   projection  'equidistant' (even spread) or 'ortho' (exact when seen straight on, squashed at edges)
 
 Material:
-  roughness   0..1, written to the NormalRoughness texture (blue channel)
-  metalness   0..1, stored in the colour texture's alpha (the game packs soul_container_metal.png
-              there; the original cage is fully metallic, which makes a photo look like chrome).
+  roughness    0..1, written to the NormalRoughness texture (blue channel)
+  color_alpha  0..1, the colour texture's alpha. The compiler packs soul_container_metal.png there
+               (original = 255). With Deadlock's NPR shader alpha 0 renders the sphere black, so
+               its exact meaning is still being calibrated (see `catmod_cli.py calibrate`).
 """
 from __future__ import annotations
 
@@ -53,8 +54,8 @@ class PhotoParams:
     ring_color: tuple[int, int, int] = (235, 235, 235)
     bg_color: tuple[int, int, int] = (24, 120, 140)  # soul teal
     back: str = "mirror"  # wrap layout only: mirror | flip | color
-    metalness: float = 0.0
-    roughness: float = 0.9  # 0 = mirror-like, 1 = fully matte (original cage: ~0.69)
+    color_alpha: float = 1.0  # original texture: ~1.0. 0 renders BLACK in game (tested)
+    roughness: float = 0.69   # original cage average (177/255)
     contrast: float = 1.05
     saturation: float = 1.10
     rotation_deg: float = 0.0
@@ -65,7 +66,7 @@ class PhotoParams:
         assert self.back in ("mirror", "flip", "color"), self.back
         assert 0.05 <= self.radius <= 1.5, self.radius
         assert 5 <= self.sticker_deg <= 90, self.sticker_deg
-        assert 0 <= self.metalness <= 1, self.metalness
+        assert 0 <= self.color_alpha <= 1, self.color_alpha
         assert 0 <= self.roughness <= 1, self.roughness
         return self
 
@@ -111,7 +112,7 @@ def _disc_coords(d, centre, up, max_angle, projection):
 
 
 def sphere_texture(photo, params: PhotoParams | None = None, size: int = TEX_SIZE) -> Image.Image:
-    """RGBA equirect texture; alpha = metalness."""
+    """RGBA equirect texture; alpha = params.color_alpha."""
     p = (params or PhotoParams()).validate()
     arr = np.asarray(load_photo(photo, p), np.float32)
     h, w = arr.shape[:2]
@@ -140,6 +141,6 @@ def sphere_texture(photo, params: PhotoParams | None = None, size: int = TEX_SIZ
             out[inside] = _bilinear(arr, cx + sx[inside] * r, cy - sy[inside] * r)
             out[mine & (ang > R) & (ang <= R + ring)] = p.ring_color
 
-    alpha = np.full(out.shape[:2] + (1,), round(p.metalness * 255), np.float32)
+    alpha = np.full(out.shape[:2] + (1,), round(p.color_alpha * 255), np.float32)
     rgba = np.concatenate([np.clip(out, 0, 255), alpha], -1).astype(np.uint8)
     return Image.fromarray(rgba, "RGBA")

@@ -8,12 +8,14 @@ Convierte el **soul container** de Deadlock (el objeto que queda cuando mueres c
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python scripts/catmod_cli.py fetch           # extrae los archivos base desde tu instalación de Deadlock
-.venv/bin/python scripts/catmod_cli.py build assets/cat.jpg --preview build/preview.png
-./scripts/stage_for_dmm.sh                             # copia build/pak01_dir.vpk a donde DMM (Flatpak) puede leerlo
+.venv/bin/python scripts/catmod_cli.py fetch                         # archivos base desde tu Deadlock
+.venv/bin/python scripts/catmod_cli.py build assets/cat.jpg --open   # VPK + preview.png + preview.html (3D, se abre en el navegador)
 ```
 
-En DMM, agrega un mod local y elige `~/.var/app/dev.stormix.deadlock-mod-manager/import/catmod_sphere.vpk`. Como `.var` es una carpeta oculta, presiona Ctrl+H en el selector de archivos para verla.
+- **Revisar antes de probar en el juego:** `build/preview.html` es un visor 3D interactivo. Muestra bien el layout y el encuadre; la iluminación es aproximada y no reproduce el shader del juego.
+- **Probar rápido en el juego, sin DMM:** agrega `--install` para copiar el VPK a `addons/pak09_dir.vpk` (`catmod_cli.py uninstall` lo quita). Hay que reiniciar Deadlock, y si DMM tiene otro mod del soul container activo, desactívalo, porque gana el de número menor.
+- **Copia en Descargas:** `--downloads`. Para que DMM (Flatpak) pueda leer `~/Downloads`, dale permiso una sola vez: `flatpak override --user --filesystem=xdg-download:ro dev.stormix.deadlock-mod-manager`.
+- **Calibración del material:** `catmod_cli.py calibrate assets/cat.jpg -o build/calibrate/pak01_dir.vpk` genera una esfera con franjas etiquetadas de alpha (A0…A255) y rugosidad (R0…R100). Con una sola prueba en el juego se ve qué combinación luce mejor.
 
 Opciones de `build`:
 
@@ -22,7 +24,7 @@ Opciones de `build`:
 | `--layout cube6\|twice\|wrap` | `cube6`: 6 calcomanías, legible desde cualquier ángulo (por defecto); `twice`: frente y atrás; `wrap`: una sola foto envolviendo toda la esfera |
 | `--sticker-deg` / `--ring-deg` | tamaño angular de cada calcomanía (40° por defecto) y grosor del anillo (3°) |
 | `--bg-color` / `--ring-color` | colores hex del fondo (turquesa "alma") y del anillo |
-| `--metalness` / `--roughness` | material: 0 / 0.9 por defecto. **No subas el metal:** la foto se vuelve un reflejo cromado |
+| `--color-alpha` / `--roughness` | material: 1.0 / 0.69 por defecto, igual que el original. Con `--color-alpha 0` la esfera se ve **negra** en el juego (probado) |
 | `--center X Y` | punto de la foto (de 0 a 1) que queda al frente de la esfera |
 | `--radius R` | cuánta foto envuelve el frente (fracción del lado corto; 0.5 por defecto, más grande = se ve más foto) |
 | `--projection equidistant\|ortho` | `equidistant` reparte la foto de forma pareja (por defecto); `ortho` la deja idéntica vista de frente, pero muy estirada en los bordes |
@@ -38,8 +40,8 @@ No hacen falta herramientas de Valve: el mod se arma **parcheando los archivos c
 | Archivo | Cambio |
 |---|---|
 | `soul_container.vmdl_c` | Los vértices e índices de los 4 LOD (comprimidos con meshoptimizer) se reemplazan por una esfera UV de radio 6.3. Se mantienen las mismas cantidades, así que los metadatos binarios (KV3), la física (esfera de radio 7) y el material no cambian. |
-| `soul_container_color…vtex_c` | La foto proyectada en equirectangular, 2048², BC7 con 10 mips, reutilizando la cabecera original. **El alpha de esta textura es el metalness**: el juego empaqueta ahí `soul_container_metal.png`, y la jaula original es 100% metálica. Lo dejamos en 0. |
-| `soul_container_rough…vtex_c` | Normal plana y rugosidad uniforme (0.9 por defecto), para que no se imprima el relieve de la jaula original y la foto se vea mate. |
+| `soul_container_color…vtex_c` | La foto proyectada en equirectangular, 2048², BC7 con 10 mips, reutilizando la cabecera original. El alpha de esta textura viene de `soul_container_metal.png` (el original vale 255). Con el shader NPR de Deadlock, alpha 0 hace que se vea negra; su efecto exacto se está calibrando con `calibrate`. |
+| `soul_container_rough…vtex_c` | Normal plana y rugosidad uniforme (0.69 por defecto, igual que el original), para que no se imprima el relieve de la jaula. |
 | `soul_container_ao…vtex_c` | Blanco (BC4), sin oclusión horneada. |
 
 Detalles de formato descubiertos por ingeniería inversa (verificados contra Source 2 Viewer):
