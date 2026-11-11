@@ -2,7 +2,8 @@
 
 Vertex layout (24 bytes, from the model's m_inputLayoutFields):
   POSITION      R32G32B32_FLOAT  12 B   (Source units, Z up)
-  TEXCOORD      R16G16_SNORM      4 B
+  TEXCOORD      declared R16G16_SNORM (format 37), but the game decodes it as R16G16_FLOAT
+                (semantic "LowPrecisionUv"; confirmed in game with a half-f16/half-snorm sphere)  4 B
   NORMAL        R32_UINT          4 B   CompressedTangentFrame (see pack_tangent_frame)
   BLENDINDICES  R8G8B8A8_UINT     4 B   all zero (single bone)
 
@@ -94,8 +95,8 @@ def uv_sphere(radius: float, nu: int, nv: int, u0: float = 0.0, u1: float = 1.0)
 
 
 def encode_uv(uv: np.ndarray, encoding: str) -> np.ndarray:
-    """4 bytes per vertex. 'snorm' = R16G16_SNORM (what the layout declares, format 37);
-    'f16' = R16G16_FLOAT bit patterns (diagnostic: the in-game look matched a half-float decode)."""
+    """4 bytes per vertex. 'f16' = R16G16_FLOAT, what the game actually decodes (confirmed in game);
+    'snorm' = R16G16_SNORM, what the layout declares and Source2Viewer assumes (wrong in game)."""
     uv = np.clip(uv, 0, 1)
     if encoding == "snorm":
         return np.rint(uv * 32767).astype(np.int16).view(np.uint8).reshape(-1, 4)
@@ -104,7 +105,7 @@ def encode_uv(uv: np.ndarray, encoding: str) -> np.ndarray:
     raise ValueError(encoding)
 
 
-def build_buffers(vertex_count: int, index_count: int, radius: float, uv_encoding: str = "snorm"):
+def build_buffers(vertex_count: int, index_count: int, radius: float, uv_encoding: str = "f16"):
     """Vertex bytes (vertex_count * 24) and uint32 indices (index_count) for a padded sphere.
 
     The counts must equal the original LOD's so the model's metadata stays valid: unused vertices

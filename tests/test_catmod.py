@@ -84,3 +84,10 @@ def test_build_mod_end_to_end():
     tmp = io.BytesIO(data)
     assert tmp.getbuffer().nbytes > 1_000_000
     del vpk
+
+
+def test_uv_stored_as_half_float():
+    # the game decodes the TEXCOORD stream as R16G16_FLOAT (confirmed in game), not the declared SNORM
+    vb, _, _ = build_buffers(1444, 3264, 6.3)
+    uv = vb[:, 12:16].copy().view(np.float16).astype(float)
+    assert uv.min() >= 0 and uv.max() <= 1 and uv.max() > 0.9

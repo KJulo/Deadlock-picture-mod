@@ -39,13 +39,14 @@ No hacen falta herramientas de Valve: el mod se arma **parcheando los archivos c
 
 | Archivo | Cambio |
 |---|---|
-| `soul_container.vmdl_c` | Los vértices e índices de los 4 LOD (comprimidos con meshoptimizer) se reemplazan por una esfera UV de radio 6.3. Se mantienen las mismas cantidades, así que los metadatos binarios (KV3), la física (esfera de radio 7) y el material no cambian. |
+| `soul_container.vmdl_c` | Los vértices (meshopt códec v0) e índices de los 4 LOD se reemplazan por una esfera UV de radio 6.3. Se mantienen las mismas cantidades, así que los metadatos binarios (KV3), la física (esfera de radio 7) y el material no cambian. |
 | `soul_container_color…vtex_c` | La foto proyectada en equirectangular, 2048², BC7 con 10 mips, reutilizando la cabecera original. El alpha de esta textura viene de `soul_container_metal.png` (el original vale 255). Con el shader NPR de Deadlock, alpha 0 hace que se vea negra; su efecto exacto se está calibrando con `calibrate`. |
 | `soul_container_rough…vtex_c` | Normal plana y rugosidad uniforme (0.69 por defecto, igual que el original), para que no se imprima el relieve de la jaula. |
 | `soul_container_ao…vtex_c` | Blanco (BC4), sin oclusión horneada. |
 
 Detalles de formato descubiertos por ingeniería inversa (verificados contra Source 2 Viewer):
-- **Vértice (24 B):** posición f32×3, UV `R16G16_SNORM`, `CompressedTangentFrame` u32 y blend indices u8×4.
+- **Vértice (24 B):** posición f32×3, UV, `CompressedTangentFrame` u32 y blend indices u8×4.
+- **UV: el layout declara `R16G16_SNORM` (formato 37, semántica `LowPrecisionUv`), pero el juego la decodifica como `R16G16_FLOAT`.** Source 2 Viewer asume SNORM, así que no sirve para validar esto. Lo confirmamos en el juego con `catmod_cli.py uvtest`: una esfera mitad f16 (fondo naranja) y mitad snorm (turquesa); solo la naranja se ve bien.
 - **`CompressedTangentFrame`:** `bit0` = signo del bitangente, `bits 1-11` = ángulo de la tangente en la base de Frisvad (×2047/2π), `bits 12-21` y `22-31` = normal octaédrica (×1023).
 - **Contenedor de recursos:** offsets relativos y bloques alineados a 16, salvo `RERL`, que va alineado a 4. En `vtex_c`, los mips van después de los bloques, del más chico al más grande.
 

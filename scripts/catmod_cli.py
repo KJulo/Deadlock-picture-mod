@@ -53,7 +53,7 @@ def add_photo_args(b):
     b.add_argument("--roughness", type=float, default=0.69)
     b.add_argument("--back", choices=["mirror", "flip", "color"], default="mirror", help="wrap layout only")
     b.add_argument("--rotate", type=float, default=0.0)
-    b.add_argument("--uv-encoding", choices=["snorm", "f16", "split"], default="snorm",
+    b.add_argument("--uv-encoding", choices=["snorm", "f16", "split"], default="f16",
                    help="how vertex UVs are stored (diagnostic)")
     b.add_argument("--no-preview", action="store_true", help="skip preview.png / preview.html")
     b.add_argument("--open", action="store_true", help="open preview.html in the browser")

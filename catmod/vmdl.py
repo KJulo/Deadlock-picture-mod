@@ -33,7 +33,7 @@ def _encode_indices(idx: np.ndarray, vertex_count: int) -> bytes:
 
 
 def build_sphere_model(template: bytes, radius: float = SPHERE_RADIUS,
-                       uv_encoding: str = "snorm") -> tuple[bytes, list]:
+                       uv_encoding: str = "f16") -> tuple[bytes, list]:
     res = Resource.parse(template)
     grids = []
     for vblock, iblock, vcount, icount in templates.MODEL_LODS:
@@ -45,7 +45,7 @@ def build_sphere_model(template: bytes, radius: float = SPHERE_RADIUS,
     return res.serialize(), grids
 
 
-def decode_lod(model: bytes, lod: int = 0, uv_encoding: str = "snorm"):
+def decode_lod(model: bytes, lod: int = 0, uv_encoding: str = "f16"):
     """Decode positions, uvs and triangles of one LOD (for previews/tests)."""
     res = Resource.parse(model)
     vblock, iblock, vcount, icount = templates.MODEL_LODS[lod]

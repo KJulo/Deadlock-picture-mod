@@ -32,7 +32,7 @@ class ModResult:
     files: dict[str, bytes]       # game path -> compiled file
     texture: Image.Image          # the composed color texture (for previews)
     grids: list                   # sphere resolution per LOD
-    uv_encoding: str = "snorm"
+    uv_encoding: str = "f16"
 
     def vpk_bytes(self) -> bytes:
         with tempfile.TemporaryDirectory() as tmp:
@@ -46,13 +46,13 @@ class ModResult:
             return out.read_bytes()
 
     def preview_mesh(self, lod: int = 0):
-        enc = "snorm" if self.uv_encoding == "split" else self.uv_encoding
+        enc = "f16" if self.uv_encoding == "split" else self.uv_encoding
         return decode_lod(self.files[templates.MODEL.game_path], lod, enc)
 
 
 def build_mod(photo, params: PhotoParams | None = None, shape: str = "sphere",
               texture: Image.Image | None = None, roughness_map: Image.Image | None = None,
-              uv_encoding: str = "snorm") -> ModResult:
+              uv_encoding: str = "f16") -> ModResult:
     """shape='sphere': sphere geometry + photo wrapped around it.
 
     `photo` is a path, file-like object or PIL image. `texture` (RGBA equirect) and
