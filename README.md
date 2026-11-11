@@ -36,4 +36,4 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 - Solo cambia una textura de tu cliente: los demás jugadores no ven el gato.
 - Si una actualización del juego cambia la cabecera o el nombre del archivo, hay que volver a correr `fetch_original.py` y el build.
-- Si Deadlock Mod Manager reescribe `addons/`, puede borrar `pak09`. En ese caso, vuelve a correr `install.sh` o importa `build/pak09_dir.vpk` desde el propio DMM.
+- **Con Deadlock Mod Manager (Flatpak):** no uses `install.sh`. Ejecuta `./scripts/stage_for_dmm.sh` y agrega como mod local el archivo `~/.var/app/dev.stormix.deadlock-mod-manager/import/catmod_soulcontainer_pak09_dir.vpk`. El sandbox de DMM no puede leer `~/Development` ni `~/Downloads`, y si eliges el archivo desde ahí falla con `Mod file not found at path`.
