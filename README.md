@@ -1,6 +1,6 @@
 # Deadlock Picture Mod — tu foto como Soul Container
 
-Convierte el **soul container** de Deadlock (el objeto que queda cuando mueres con almas sin asegurar) en una **esfera envuelta con una foto**, por ejemplo la de tu gato. El resultado es un `.vpk` que se instala con Deadlock Mod Manager.
+Convierte el **soul container** de Deadlock (el objeto que queda cuando mueres con almas sin asegurar) en una **esfera con tu foto**, por ejemplo la de tu gato. Por defecto, la foto se repite en 6 calcomanías redondas, así siempre se ve completa sin importar cómo caiga o gire la esfera. El resultado es un `.vpk` que se instala con Deadlock Mod Manager.
 
 ![preview](docs/preview.png)
 
@@ -19,10 +19,14 @@ Opciones de `build`:
 
 | Opción | Qué hace |
 |---|---|
+| `--layout cube6\|twice\|wrap` | `cube6`: 6 calcomanías, legible desde cualquier ángulo (por defecto); `twice`: frente y atrás; `wrap`: una sola foto envolviendo toda la esfera |
+| `--sticker-deg` / `--ring-deg` | tamaño angular de cada calcomanía (40° por defecto) y grosor del anillo (3°) |
+| `--bg-color` / `--ring-color` | colores hex del fondo (turquesa "alma") y del anillo |
+| `--metalness` / `--roughness` | material: 0 / 0.9 por defecto. **No subas el metal:** la foto se vuelve un reflejo cromado |
 | `--center X Y` | punto de la foto (de 0 a 1) que queda al frente de la esfera |
 | `--radius R` | cuánta foto envuelve el frente (fracción del lado corto; 0.5 por defecto, más grande = se ve más foto) |
 | `--projection equidistant\|ortho` | `equidistant` reparte la foto de forma pareja (por defecto); `ortho` la deja idéntica vista de frente, pero muy estirada en los bordes |
-| `--back mirror\|flip\|color` | qué va en la parte de atrás: espejo sin costura (por defecto), volteada o color sólido |
+| `--back mirror\|flip\|color` | solo para `wrap`: qué va en la parte de atrás |
 | `--rotate GRADOS` | rota la foto antes de proyectarla |
 
 Para probar en el juego, en sandbox o en una partida privada, abre la consola y ejecuta: `sv_cheats 1`, `citadel_give_gold 5000 1` (almas sin asegurar) y `kill`.
@@ -34,8 +38,8 @@ No hacen falta herramientas de Valve: el mod se arma **parcheando los archivos c
 | Archivo | Cambio |
 |---|---|
 | `soul_container.vmdl_c` | Los vértices e índices de los 4 LOD (comprimidos con meshoptimizer) se reemplazan por una esfera UV de radio 6.3. Se mantienen las mismas cantidades, así que los metadatos binarios (KV3), la física (esfera de radio 7) y el material no cambian. |
-| `soul_container_color…vtex_c` | La foto proyectada en equirectangular, 2048², BC7 con 10 mips, reutilizando la cabecera original. |
-| `soul_container_rough…vtex_c` | Normal plana y rugosidad uniforme, para que no se imprima el relieve de la jaula original. |
+| `soul_container_color…vtex_c` | La foto proyectada en equirectangular, 2048², BC7 con 10 mips, reutilizando la cabecera original. **El alpha de esta textura es el metalness**: el juego empaqueta ahí `soul_container_metal.png`, y la jaula original es 100% metálica. Lo dejamos en 0. |
+| `soul_container_rough…vtex_c` | Normal plana y rugosidad uniforme (0.9 por defecto), para que no se imprima el relieve de la jaula original y la foto se vea mate. |
 | `soul_container_ao…vtex_c` | Blanco (BC4), sin oclusión horneada. |
 
 Detalles de formato descubiertos por ingeniería inversa (verificados contra Source 2 Viewer):

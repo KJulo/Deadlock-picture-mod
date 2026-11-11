@@ -1,43 +1,72 @@
 """Project a user photo onto the sphere's equirectangular texture.
 
-Every texel (u, v) is a direction d on the sphere (convention in catmod.mesh, +Z up). The photo is
-"printed" on the front hemisphere (+X) facing outward; the back hemisphere is filled per `back`.
+Every texel (u, v) is a direction d on the sphere (convention in catmod.mesh: +Z up, u = phi/2pi,
+v = theta/pi). In game the container's orientation is arbitrary, so the default layout repeats the
+photo as round "stickers" so that a complete, undistorted photo is visible from every angle.
 
-Parameters (all exposed so a UI can tweak them):
-  center      (x, y) of the photo pixel that lands on the front of the sphere, fractions 0..1
-  radius      radius of the photo disc that wraps the front hemisphere, as a fraction of the
-              photo's shorter side (0.5 = the largest centred disc)
-  projection  'ortho'       -> looks exactly like the photo when seen straight on
-              'equidistant' -> spreads the photo more evenly, less squashed towards the edges
-  back        'mirror' -> back hemisphere = same disc (seamless, appears mirrored from behind)
-              'flip'   -> back hemisphere = disc flipped so it reads correctly from behind
-              'color'  -> solid `back_color`
+Layouts:
+  'cube6'  6 stickers at the cube face centres (+-X, +-Y, +-Z)      <- default, readable from anywhere
+  'twice'  2 stickers, front (+X) and back (-X)
+  'wrap'   one photo wrapped around the whole sphere (front +X, back per `back`)
+
+Sticker parameters:
+  sticker_deg   angular radius of each sticker (cube6 max ~45 before they touch)
+  ring_deg      width of the coloured ring around each sticker (0 = none)
+  ring_color / bg_color
+
+Photo framing (shared by all layouts):
+  center      photo point (fractions 0..1) placed at each sticker's centre
+  radius      photo disc radius as a fraction of the photo's shorter side (0.5 = largest centred disc)
+  projection  'equidistant' (even spread) or 'ortho' (exact when seen straight on, squashed at edges)
+
+Material:
+  roughness   0..1, written to the NormalRoughness texture (blue channel)
+  metalness   0..1, stored in the colour texture's alpha (the game packs soul_container_metal.png
+              there; the original cage is fully metallic, which makes a photo look like chrome).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from PIL import Image, ImageEnhance, ImageOps
 
 TEX_SIZE = 2048
 
+S = 1 / np.sqrt(2)
+# (centre direction, up direction) per sticker. Up for the top/bottom stickers is arbitrary.
+LAYOUTS = {
+    "cube6": [((1, 0, 0), (0, 0, 1)), ((-1, 0, 0), (0, 0, 1)), ((0, 1, 0), (0, 0, 1)),
+              ((0, -1, 0), (0, 0, 1)), ((0, 0, 1), (-1, 0, 0)), ((0, 0, -1), (1, 0, 0))],
+    "twice": [((1, 0, 0), (0, 0, 1)), ((-1, 0, 0), (0, 0, 1))],
+}
+
 
 @dataclass
 class PhotoParams:
+    layout: str = "cube6"
     center: tuple[float, float] = (0.5, 0.5)
     radius: float = 0.5
     projection: str = "equidistant"
-    back: str = "mirror"
-    back_color: tuple[int, int, int] = (40, 40, 40)
+    sticker_deg: float = 40.0
+    ring_deg: float = 3.0
+    ring_color: tuple[int, int, int] = (235, 235, 235)
+    bg_color: tuple[int, int, int] = (24, 120, 140)  # soul teal
+    back: str = "mirror"  # wrap layout only: mirror | flip | color
+    metalness: float = 0.0
+    roughness: float = 0.9  # 0 = mirror-like, 1 = fully matte (original cage: ~0.69)
     contrast: float = 1.05
     saturation: float = 1.10
-    rotation_deg: float = 0.0  # rotate the photo before projecting
+    rotation_deg: float = 0.0
 
     def validate(self):
+        assert self.layout in ("cube6", "twice", "wrap"), self.layout
         assert self.projection in ("ortho", "equidistant"), self.projection
         assert self.back in ("mirror", "flip", "color"), self.back
         assert 0.05 <= self.radius <= 1.5, self.radius
+        assert 5 <= self.sticker_deg <= 90, self.sticker_deg
+        assert 0 <= self.metalness <= 1, self.metalness
+        assert 0 <= self.roughness <= 1, self.roughness
         return self
 
 
@@ -61,35 +90,56 @@ def _bilinear(img: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy
 
 
-def sphere_texture(photo, params: PhotoParams | None = None, size: int = TEX_SIZE) -> Image.Image:
-    params = (params or PhotoParams()).validate()
-    img = load_photo(photo, params)
-    arr = np.asarray(img, np.float32)
-    h, w = arr.shape[:2]
-    cx, cy = params.center[0] * w, params.center[1] * h
-    r = params.radius * min(w, h)
-
+def directions(size: int) -> np.ndarray:
     u = (np.arange(size) + 0.5) / size
-    v = (np.arange(size) + 0.5) / size
-    ph, th = np.meshgrid(u * 2 * np.pi, v * np.pi)
-    dx = np.sin(th) * np.cos(ph)  # towards the viewer of the front face
-    dy = np.sin(th) * np.sin(ph)  # viewer's right
-    dz = np.cos(th)               # up
+    ph, th = np.meshgrid(u * 2 * np.pi, u * np.pi)
+    return np.stack([np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph), np.cos(th)], -1)
 
-    lateral = np.hypot(dy, dz)
-    if params.projection == "ortho":
-        rho = lateral  # 0 at the front centre, 1 on the silhouette
-    else:
-        alpha = np.arctan2(lateral, np.abs(dx))  # angle from the front/back axis
-        rho = alpha / (np.pi / 2)
+
+def _disc_coords(d, centre, up, max_angle, projection):
+    """Unit-disc coords (sx right, sy up) of directions d in a sticker; rho=1 at max_angle."""
+    c, up = np.asarray(centre, float), np.asarray(up, float)
+    right = np.cross(up, c)  # viewer outside looking at the sticker: right = up x centre
+    x, y, z = d @ right, d @ up, d @ c
+    lateral = np.hypot(x, y)
+    ang = np.arctan2(lateral, z)
+    rho = (ang if projection == "equidistant" else np.sin(np.minimum(ang, np.pi / 2))) / (
+        max_angle if projection == "equidistant" else np.sin(max_angle))
     with np.errstate(invalid="ignore", divide="ignore"):
-        scale = np.where(lateral > 1e-9, rho / lateral, 0.0)
-    sx, sy = dy * scale, dz * scale  # unit-disc coordinates
+        k = np.where(lateral > 1e-9, rho / lateral, 0.0)
+    return x * k, y * k, ang
 
-    back = dx < 0
-    if params.back == "flip":
-        sx = np.where(back, -sx, sx)
-    out = _bilinear(arr, cx + sx * r, cy - sy * r)
-    if params.back == "color":
-        out[back] = params.back_color
-    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), "RGB")
+
+def sphere_texture(photo, params: PhotoParams | None = None, size: int = TEX_SIZE) -> Image.Image:
+    """RGBA equirect texture; alpha = metalness."""
+    p = (params or PhotoParams()).validate()
+    arr = np.asarray(load_photo(photo, p), np.float32)
+    h, w = arr.shape[:2]
+    cx, cy, r = p.center[0] * w, p.center[1] * h, p.radius * min(w, h)
+    d = directions(size)
+
+    if p.layout == "wrap":
+        sx, sy, _ = _disc_coords(d, (1, 0, 0), (0, 0, 1), np.pi / 2, p.projection)
+        back = d[..., 0] < 0
+        if p.back == "flip":
+            sx = np.where(back, -sx, sx)
+        out = _bilinear(arr, cx + sx * r, cy - sy * r)
+        if p.back == "color":
+            out[back] = p.bg_color
+    else:
+        stickers = LAYOUTS[p.layout]
+        cos = np.stack([d @ np.asarray(c, float) for c, _ in stickers])
+        nearest = cos.argmax(0)
+        out = np.empty(d.shape[:2] + (3,), np.float32)
+        out[:] = p.bg_color
+        R, ring = np.radians(p.sticker_deg), np.radians(p.ring_deg)
+        for i, (c, up) in enumerate(stickers):
+            sx, sy, ang = _disc_coords(d, c, up, R, p.projection)
+            mine = nearest == i
+            inside = mine & (ang <= R)
+            out[inside] = _bilinear(arr, cx + sx[inside] * r, cy - sy[inside] * r)
+            out[mine & (ang > R) & (ang <= R + ring)] = p.ring_color
+
+    alpha = np.full(out.shape[:2] + (1,), round(p.metalness * 255), np.float32)
+    rgba = np.concatenate([np.clip(out, 0, 255), alpha], -1).astype(np.uint8)
+    return Image.fromarray(rgba, "RGBA")

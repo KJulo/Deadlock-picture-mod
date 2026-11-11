@@ -52,11 +52,15 @@ def test_sphere_winding_outward_and_budget():
 def test_sphere_texture_shape_and_front():
     photo = Image.new("RGB", (300, 400), (200, 30, 30))
     photo.paste((30, 200, 30), (140, 190, 160, 210))  # green dot at the centre
-    tex = sphere_texture(photo, PhotoParams(saturation=1.0, contrast=1.0), size=256)
-    assert tex.size == (256, 256)
-    # front centre of the sphere = u 0 / v 0.5 -> texel column 0, middle row
-    r, g, b = tex.getpixel((0, 128))
-    assert g > r
+    for layout in ("cube6", "twice", "wrap"):
+        tex = sphere_texture(photo, PhotoParams(layout=layout, saturation=1.0, contrast=1.0), size=256)
+        assert tex.size == (256, 256) and tex.mode == "RGBA"
+        # front centre of the sphere = u 0 / v 0.5 -> texel column 0, middle row
+        r, g, b, a = tex.getpixel((0, 128))
+        assert g > r, layout
+        assert a == 0  # metalness 0 by default (alpha = metalness)
+    tex = sphere_texture(photo, PhotoParams(metalness=1.0), size=64)
+    assert tex.getpixel((0, 32))[3] == 255
 
 
 @needs_templates

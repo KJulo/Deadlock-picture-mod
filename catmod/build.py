@@ -14,8 +14,9 @@ from .photo import PhotoParams, sphere_texture
 from .vmdl import build_sphere_model, decode_lod
 
 # compiled NormalRoughness layout (raw texels): R,G = normal XY (128 = flat), B = roughness, A = 255.
-# 177 = the original texture's average roughness. (Source2Viewer shows it re-arranged as RGB normal + A rough.)
-NORMAL_ROUGH_RGBA = (128, 128, 177, 255)
+# (Source2Viewer displays it re-arranged as RGB normal + A roughness.)
+def normal_rough_rgba(roughness: float):
+    return (128, 128, round(roughness * 255), 255)
 
 
 @dataclass
@@ -48,7 +49,8 @@ def build_mod(photo, params: PhotoParams | None = None, shape: str = "sphere") -
         raise NotImplementedError(shape)
     if not isinstance(photo, (str, Path, Image.Image)):
         photo = Image.open(io.BytesIO(photo.read() if hasattr(photo, "read") else photo))
-    texture = sphere_texture(photo, params)
+    params = (params or PhotoParams()).validate()
+    texture = sphere_texture(photo, params)  # RGBA, alpha = metalness
 
     model, grids = build_sphere_model(templates.load(templates.MODEL))
     color_tpl = templates.load(templates.COLOR)
@@ -58,9 +60,9 @@ def build_mod(photo, params: PhotoParams | None = None, shape: str = "sphere") -
     size = vtex.info(color_tpl)["width"]
     files = {
         templates.MODEL.game_path: model,
-        templates.COLOR.game_path: vtex.rebuild(color_tpl, texture.convert("RGBA").resize((size, size))),
+        templates.COLOR.game_path: vtex.rebuild(color_tpl, texture.resize((size, size), Image.LANCZOS)),
         templates.NORMAL_ROUGH.game_path: vtex.rebuild(
-            nr_tpl, Image.new("RGBA", (size, size), NORMAL_ROUGH_RGBA)),
+            nr_tpl, Image.new("RGBA", (size, size), normal_rough_rgba(params.roughness))),
         templates.AO.game_path: vtex.rebuild(ao_tpl, constant=255),  # no baked occlusion
     }
     return ModResult(files, texture, grids)

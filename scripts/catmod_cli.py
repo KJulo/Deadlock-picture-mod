@@ -30,7 +30,15 @@ def main():
     b.add_argument("--center", type=float, nargs=2, default=(0.5, 0.5), metavar=("X", "Y"))
     b.add_argument("--radius", type=float, default=0.5)
     b.add_argument("--projection", choices=["ortho", "equidistant"], default="equidistant")
-    b.add_argument("--back", choices=["mirror", "flip", "color"], default="mirror")
+    b.add_argument("--layout", choices=["cube6", "twice", "wrap"], default="cube6",
+                   help="cube6: 6 photo stickers (readable from any angle); twice: front+back; wrap: one photo")
+    b.add_argument("--sticker-deg", type=float, default=40.0, help="sticker angular radius")
+    b.add_argument("--ring-deg", type=float, default=3.0, help="ring width around stickers (0 = none)")
+    b.add_argument("--bg-color", default="18788c", help="hex colour between stickers")
+    b.add_argument("--ring-color", default="ebebeb", help="hex colour of the sticker ring")
+    b.add_argument("--metalness", type=float, default=0.0)
+    b.add_argument("--roughness", type=float, default=0.9)
+    b.add_argument("--back", choices=["mirror", "flip", "color"], default="mirror", help="wrap layout only")
     b.add_argument("--rotate", type=float, default=0.0)
     a = ap.parse_args()
 
@@ -39,8 +47,11 @@ def main():
             print("wrote", p)
         return
 
-    params = PhotoParams(center=tuple(a.center), radius=a.radius, projection=a.projection,
-                         back=a.back, rotation_deg=a.rotate)
+    hexrgb = lambda h: tuple(int(h.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    params = PhotoParams(layout=a.layout, center=tuple(a.center), radius=a.radius,
+                         projection=a.projection, sticker_deg=a.sticker_deg, ring_deg=a.ring_deg,
+                         bg_color=hexrgb(a.bg_color), ring_color=hexrgb(a.ring_color), back=a.back,
+                         metalness=a.metalness, roughness=a.roughness, rotation_deg=a.rotate)
     result = build_mod(a.photo, params)
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_bytes(result.vpk_bytes())
