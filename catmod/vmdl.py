@@ -17,8 +17,14 @@ from .resource import Resource
 SPHERE_RADIUS = 6.3
 
 
+# meshopt vertex codec version. The game's own buffers are v1, but with v1 streams from the
+# python meshoptimizer binding the UVs came out wrong in game while positions survived (suspected
+# mismatch between v1 revisions). v0 is decoded identically by every meshopt version.
+VERTEX_CODEC_VERSION = 0
+
+
 def _encode_vertices(vb: np.ndarray) -> bytes:
-    mo.encode_vertex_version(1)  # the game's own buffers use meshopt vertex codec v1
+    mo.encode_vertex_version(VERTEX_CODEC_VERSION)
     return bytes(mo.encode_vertex_buffer(vb, len(vb), VERTEX_SIZE))
 
 
