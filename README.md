@@ -46,7 +46,7 @@ No hacen falta herramientas de Valve: el mod se arma **parcheando los archivos c
 
 Detalles de formato descubiertos por ingeniería inversa (verificados contra Source 2 Viewer):
 - **Vértice (24 B):** posición f32×3, UV, `CompressedTangentFrame` u32 y blend indices u8×4.
-- **UV: el layout declara `R16G16_SNORM` (formato 37, semántica `LowPrecisionUv`), pero el juego la decodifica como `R16G16_FLOAT`.** Source 2 Viewer asume SNORM, así que no sirve para validar esto. Lo confirmamos en el juego con `catmod_cli.py uvtest`: una esfera mitad f16 (fondo naranja) y mitad snorm (turquesa); solo la naranja se ve bien.
+- **UV: cada LOD declara su propio formato y el juego lo respeta.** LODs 0–2: `R16G16_SNORM` (formato 37); LOD 3: `R16G16_FLOAT` (formato 34). Un primer test en el juego (`uvtest`, mitad f16 y mitad snorm) hizo creer que el juego siempre lee f16, pero era porque a distancia normal se dibuja el LOD 3. Para verificar cada nivel en el juego: `go run ./cmd/catmod -lodtest` (cada LOD muestra una franja de color con su número).
 - **`CompressedTangentFrame`:** `bit0` = signo del bitangente, `bits 1-11` = ángulo de la tangente en la base de Frisvad (×2047/2π), `bits 12-21` y `22-31` = normal octaédrica (×1023).
 - **Contenedor de recursos:** offsets relativos y bloques alineados a 16, salvo `RERL`, que va alineado a 4. En `vtex_c`, los mips van después de los bloques, del más chico al más grande.
 

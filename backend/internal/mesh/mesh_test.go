@@ -19,6 +19,7 @@ type goldenLOD struct {
 	VertexCount int    `json:"vertex_count"`
 	IndexCount  int    `json:"index_count"`
 	Grid        [2]int `json:"grid"`
+	UVFormat    string `json:"uv_format"`
 	Offset      int    `json:"offset"`
 }
 
@@ -56,7 +57,11 @@ func TestMatchesPythonReference(t *testing.T) {
 	radius, lods, blob := loadGolden(t)
 	le := binary.LittleEndian
 	for n, lod := range lods {
-		vb, idx, g, err := BuildBuffers(lod.VertexCount, lod.IndexCount, radius)
+		format := UVSnorm
+		if lod.UVFormat == "f16" {
+			format = UVHalf
+		}
+		vb, idx, g, err := BuildBuffers(lod.VertexCount, lod.IndexCount, radius, format, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -163,7 +168,7 @@ func TestWindingOutward(t *testing.T) {
 
 func TestBudgets(t *testing.T) {
 	for _, c := range [][2]int{{6084, 17997}, {3196, 9000}, {1531, 3576}, {1444, 3264}} {
-		vb, idx, g, err := BuildBuffers(c[0], c[1], 6.3)
+		vb, idx, g, err := BuildBuffers(c[0], c[1], 6.3, UVSnorm, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -188,5 +193,19 @@ func TestHalfToFloatRoundtrip(t *testing.T) {
 		if Float16(HalfToFloat(h)) != h {
 			t.Fatalf("half %#04x does not roundtrip", h)
 		}
+	}
+}
+
+func TestUVFormats(t *testing.T) {
+	for _, x := range []float64{0, 0.25, 0.5, 1, 1.0 / 3} {
+		if d := UVSnorm.Decode(UVSnorm.Encode(x)) - x; d > 1.0/32767 || d < -1.0/32767 {
+			t.Errorf("snorm %v -> %v", x, UVSnorm.Decode(UVSnorm.Encode(x)))
+		}
+		if d := UVHalf.Decode(UVHalf.Encode(x)) - x; d > 1e-3 || d < -1e-3 {
+			t.Errorf("f16 %v -> %v", x, UVHalf.Decode(UVHalf.Encode(x)))
+		}
+	}
+	if UVSnorm.Encode(1) != 32767 || UVSnorm.Encode(-5) != 0 || UVHalf.Encode(1) != 0x3c00 {
+		t.Error("encodings of the limits are wrong")
 	}
 }

@@ -17,18 +17,22 @@ import (
 // SphereRadius fits inside every LOD's bounding box (LOD0 bounds are ±6.34).
 const SphereRadius = 6.3
 
-// LOD describes where one level of detail lives in the model and how big it must stay.
+// LOD describes where one level of detail lives in the model, how big it must stay and the UV
+// format its vertex layout declares.
 type LOD struct {
 	VertexBlock, IndexBlock int
 	VertexCount, IndexCount int
+	UV                      mesh.UVFormat
 }
 
-// LODs of the pinned model (from its MDAT/CTRL data, dumped with Source2Viewer-CLI).
+// LODs of the pinned model (from its MDAT/CTRL data, dumped with Source2Viewer-CLI). The UV
+// formats are the TEXCOORD m_Format of each LOD's m_inputLayoutFields: 37 (SNORM) for LODs 0-2,
+// 34 (FLOAT) for LOD3.
 var LODs = []LOD{
-	{0, 1, 6084, 17997},
-	{3, 4, 3196, 9000},
-	{6, 7, 1531, 3576},
-	{9, 10, 1444, 3264},
+	{0, 1, 6084, 17997, mesh.UVSnorm},
+	{3, 4, 3196, 9000, mesh.UVSnorm},
+	{6, 7, 1531, 3576, mesh.UVSnorm},
+	{9, 10, 1444, 3264, mesh.UVHalf},
 }
 
 // LODMesh is the uncompressed geometry written into one LOD (handy for previews).
@@ -40,6 +44,12 @@ type LODMesh struct {
 
 // BuildSphereModel returns the patched model and the geometry of each LOD.
 func BuildSphereModel(template []byte, radius float64) ([]byte, []LODMesh, error) {
+	return BuildSphereModelRemap(template, radius, nil)
+}
+
+// BuildSphereModelRemap is BuildSphereModel with per-LOD UV remapping (nil = none). Used by the
+// LOD diagnostic, which sends each LOD to its own labelled band of the texture.
+func BuildSphereModelRemap(template []byte, radius float64, remap func(lod int) mesh.UVRemap) ([]byte, []LODMesh, error) {
 	res, err := resource.Parse(template)
 	if err != nil {
 		return nil, nil, err
@@ -50,7 +60,11 @@ func BuildSphereModel(template []byte, radius float64) ([]byte, []LODMesh, error
 			res.Blocks[lod.VertexBlock].Kind != "MVTX" || res.Blocks[lod.IndexBlock].Kind != "MIDX" {
 			return nil, nil, fmt.Errorf("vmdl: LOD%d blocks not where expected (game update?)", n)
 		}
-		vb, idx, grid, err := mesh.BuildBuffers(lod.VertexCount, lod.IndexCount, radius)
+		var r mesh.UVRemap
+		if remap != nil {
+			r = remap(n)
+		}
+		vb, idx, grid, err := mesh.BuildBuffers(lod.VertexCount, lod.IndexCount, radius, lod.UV, r)
 		if err != nil {
 			return nil, nil, err
 		}

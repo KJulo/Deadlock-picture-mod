@@ -40,6 +40,12 @@ MODEL_LODS = [
     (9, 10, 1444, 3264),
 ]
 
+# TEXCOORD format declared by each LOD's vertex layout (m_inputLayoutFields): LODs 0-2 use
+# R16G16_SNORM (format 37), LOD3 uses R16G16_FLOAT (format 34). The game honours the declaration,
+# so each LOD must store its UVs in its own format. (An earlier in-game test looked like "the game
+# always reads f16" only because the small soul container is usually drawn with LOD3.)
+MODEL_LOD_UV = ["snorm", "snorm", "snorm", "f16"]
+
 
 def local_path(t: Template) -> Path:
     return TEMPLATE_DIR / t.game_path

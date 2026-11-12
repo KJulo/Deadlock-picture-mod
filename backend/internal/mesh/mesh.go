@@ -4,7 +4,7 @@
 // Vertex layout (24 bytes):
 //
 //	0  POSITION      3 × f32                 Source units, Z up
-//	12 TEXCOORD      2 × f16                 declared R16G16_SNORM, but the game reads half floats
+//	12 TEXCOORD      2 × 16 bit              in the format each LOD declares (UVFormat)
 //	16 NORMAL        u32                     CompressedTangentFrame (PackTangentFrame)
 //	20 BLENDINDICES  4 × u8                  all zero (single bone)
 //
@@ -201,10 +201,47 @@ func UVSphere(radius float64, g Grid) Sphere {
 
 func clamp01(x float64) float64 { return math.Max(0, math.Min(1, x)) }
 
+// UVFormat is how a LOD stores its TEXCOORD stream. Each LOD's vertex layout declares its own:
+// in soul_container.vmdl_c LODs 0-2 are R16G16_SNORM (format 37) and LOD3 is R16G16_FLOAT (34).
+// The game honours the declaration, so the bytes must match it.
+type UVFormat int
+
+const (
+	UVSnorm UVFormat = iota // R16G16_SNORM: value × 32767 as int16
+	UVHalf                  // R16G16_FLOAT: IEEE half float
+)
+
+func (f UVFormat) String() string {
+	if f == UVHalf {
+		return "f16"
+	}
+	return "snorm"
+}
+
+// Encode stores a UV coordinate (clamped to 0..1) in this format.
+func (f UVFormat) Encode(x float64) uint16 {
+	x = clamp01(x)
+	if f == UVHalf {
+		return Float16(x)
+	}
+	return uint16(int16(math.RoundToEven(x * 32767))) // numpy.rint rounds half to even too
+}
+
+// Decode reads a stored UV coordinate the way the GPU does.
+func (f UVFormat) Decode(b uint16) float64 {
+	if f == UVHalf {
+		return HalfToFloat(b)
+	}
+	return math.Max(-1, float64(int16(b))/32767)
+}
+
+// UVRemap optionally moves the sphere's UVs (used by the LOD diagnostic). nil = unchanged.
+type UVRemap func(u, v float64) (float64, float64)
+
 // BuildBuffers returns the vertex bytes (vertexCount × 24) and indices (indexCount) of the
 // largest sphere that fits. The counts must equal the original LOD's so the model metadata stays
 // valid: unused vertices repeat vertex 0, unused indices are 0 (invisible degenerate triangles).
-func BuildBuffers(vertexCount, indexCount int, radius float64) ([]byte, []uint32, Grid, error) {
+func BuildBuffers(vertexCount, indexCount int, radius float64, uv UVFormat, remap UVRemap) ([]byte, []uint32, Grid, error) {
 	g := SphereGrid(vertexCount, indexCount/3)
 	if g.Vertices() > vertexCount || 3*g.Triangles() > indexCount {
 		return nil, nil, g, fmt.Errorf("mesh: budget %d vertices / %d indices too small", vertexCount, indexCount)
@@ -217,8 +254,12 @@ func BuildBuffers(vertexCount, indexCount int, radius float64) ([]byte, []uint32
 		for c := 0; c < 3; c++ {
 			le.PutUint32(v[4*c:], math.Float32bits(float32(s.Pos[k][c])))
 		}
-		le.PutUint16(v[12:], Float16(clamp01(s.UV[k][0])))
-		le.PutUint16(v[14:], Float16(clamp01(s.UV[k][1])))
+		u, w := s.UV[k][0], s.UV[k][1]
+		if remap != nil {
+			u, w = remap(u, w)
+		}
+		le.PutUint16(v[12:], uv.Encode(u))
+		le.PutUint16(v[14:], uv.Encode(w))
 		le.PutUint32(v[16:], PackTangentFrame(s.Normal[k], s.Tangent[k], 1))
 		// v[20:24] blend indices stay 0
 	}

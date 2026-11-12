@@ -80,11 +80,12 @@ def mesh_buffers():
 
     Returns (meta, blob): blob is vb0 | idx0 | vb1 | idx1 ... with indices as little-endian u32.
     """
-    meta, blob = {"radius": SPHERE_RADIUS, "uv_encoding": "f16", "lods": []}, bytearray()
-    for _, _, vcount, icount in templates.MODEL_LODS:
-        vb, idx, grid = build_buffers(vcount, icount, SPHERE_RADIUS, "f16")
+    meta, blob = {"radius": SPHERE_RADIUS, "lods": []}, bytearray()
+    for lod, (_, _, vcount, icount) in enumerate(templates.MODEL_LODS):
+        uv = templates.MODEL_LOD_UV[lod]
+        vb, idx, grid = build_buffers(vcount, icount, SPHERE_RADIUS, uv)
         meta["lods"].append({"vertex_count": vcount, "index_count": icount, "grid": list(grid),
-                             "offset": len(blob)})
+                             "uv_format": uv, "offset": len(blob)})
         blob += vb.tobytes() + idx.astype("<u4").tobytes()
     return meta, bytes(blob)
 
@@ -201,7 +202,7 @@ def main():
     # mtime=0 -> the .gz is byte-identical on every run (no spurious git diffs)
     (OUT / "mesh_buffers.bin.gz").write_bytes(gzip.compress(blob, mtime=0))
     print("wrote", OUT / "mesh_buffers.json", "and", OUT / "mesh_buffers.bin.gz")
-    model, _ = build_sphere_model(templates.load(templates.MODEL), SPHERE_RADIUS, "f16")
+    model, _ = build_sphere_model(templates.load(templates.MODEL), SPHERE_RADIUS)
     from catmod import vtex
     ao = vtex.rebuild(templates.load(templates.AO), constant=255)
     (OUT / "model_golden.json").write_text(json.dumps(

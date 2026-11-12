@@ -337,10 +337,10 @@ func writeBody(w http.ResponseWriter, r *http.Request, contentType string, data 
 }
 
 // meshJSON renders one LOD of the sphere as the game decodes it: positions (Source units, Z up),
-// UVs decoded from the stored half floats, and only the real (non-padding) triangles.
+// UVs decoded with the format that LOD declares, and only the real (non-padding) triangles.
 func meshJSON(lodIndex int) ([]byte, error) {
 	lod := vmdl.LODs[lodIndex]
-	vb, idx, grid, err := mesh.BuildBuffers(lod.VertexCount, lod.IndexCount, vmdl.SphereRadius)
+	vb, idx, grid, err := mesh.BuildBuffers(lod.VertexCount, lod.IndexCount, vmdl.SphereRadius, lod.UV, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -351,11 +351,11 @@ func meshJSON(lodIndex int) ([]byte, error) {
 		for c := 0; c < 3; c++ {
 			positions = append(positions, math.Float32frombits(binary.LittleEndian.Uint32(v[4*c:])))
 		}
-		uvs = append(uvs, mesh.HalfToFloat(binary.LittleEndian.Uint16(v[12:])),
-			mesh.HalfToFloat(binary.LittleEndian.Uint16(v[14:])))
+		uvs = append(uvs, lod.UV.Decode(binary.LittleEndian.Uint16(v[12:])),
+			lod.UV.Decode(binary.LittleEndian.Uint16(v[14:])))
 	}
 	return json.Marshal(map[string]any{
-		"lod": lodIndex, "grid": []int{grid.NU, grid.NV}, "up": "z", "radius": vmdl.SphereRadius,
+		"lod": lodIndex, "uv_format": lod.UV.String(), "grid": []int{grid.NU, grid.NV}, "up": "z", "radius": vmdl.SphereRadius,
 		"positions": positions, "uvs": uvs, "indices": idx[:3*grid.Triangles()],
 	})
 }

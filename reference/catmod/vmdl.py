@@ -32,20 +32,25 @@ def _encode_indices(idx: np.ndarray, vertex_count: int) -> bytes:
     return bytes(mo.encode_index_buffer(idx.astype(np.uint32), len(idx), vertex_count))
 
 
+def lod_uv_encoding(lod: int, uv_encoding: str = "auto") -> str:
+    """'auto' = the format each LOD declares (templates.MODEL_LOD_UV); anything else forces it."""
+    return templates.MODEL_LOD_UV[lod] if uv_encoding == "auto" else uv_encoding
+
+
 def build_sphere_model(template: bytes, radius: float = SPHERE_RADIUS,
-                       uv_encoding: str = "f16") -> tuple[bytes, list]:
+                       uv_encoding: str = "auto") -> tuple[bytes, list]:
     res = Resource.parse(template)
     grids = []
-    for vblock, iblock, vcount, icount in templates.MODEL_LODS:
+    for lod, (vblock, iblock, vcount, icount) in enumerate(templates.MODEL_LODS):
         assert res.blocks[vblock][0] == "MVTX" and res.blocks[iblock][0] == "MIDX"
-        vb, idx, grid = build_buffers(vcount, icount, radius, uv_encoding)
+        vb, idx, grid = build_buffers(vcount, icount, radius, lod_uv_encoding(lod, uv_encoding))
         res.blocks[vblock] = ("MVTX", _encode_vertices(vb))
         res.blocks[iblock] = ("MIDX", _encode_indices(idx, vcount))
         grids.append(grid)
     return res.serialize(), grids
 
 
-def decode_lod(model: bytes, lod: int = 0, uv_encoding: str = "f16"):
+def decode_lod(model: bytes, lod: int = 0, uv_encoding: str = "auto"):
     """Decode positions, uvs and triangles of one LOD (for previews/tests)."""
     res = Resource.parse(model)
     vblock, iblock, vcount, icount = templates.MODEL_LODS[lod]
@@ -53,7 +58,7 @@ def decode_lod(model: bytes, lod: int = 0, uv_encoding: str = "f16"):
     vb = vb.view(np.uint8).reshape(vcount, VERTEX_SIZE)
     pos = vb[:, :12].copy().view(np.float32).reshape(-1, 3).astype(float)
     raw = vb[:, 12:16].copy()
-    if uv_encoding == "f16":
+    if lod_uv_encoding(lod, uv_encoding) == "f16":
         uv = raw.view(np.float16).reshape(-1, 2).astype(float)
     else:
         uv = raw.view(np.int16).reshape(-1, 2) / 32767.0

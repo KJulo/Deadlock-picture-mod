@@ -20,7 +20,7 @@ Además están los **índices**: cada grupo de 3 números dice qué vértices fo
 
 **El relleno.** Si sobran vértices, se repite el vértice 0. Si sobran índices, se rellenan con `0, 0, 0`, que forman triángulos de área cero: el juego los "dibuja", pero no se ven.
 
-**Half floats (`Float16`).** Es el descubrimiento que hicimos probando en el juego: aunque el modelo dice que las UV son enteros, Deadlock las lee como floats de 16 bits. Go no tiene un tipo `float16`, así que la conversión está escrita a mano: separa exponente y mantisa, redondea al par más cercano y maneja los números muy chicos (subnormales).
+**Formato de las UV (`UVFormat`).** Cada LOD declara el suyo y el juego lo respeta: los LOD 0–2 usan **SNORM** (enteros de 16 bits, valor × 32767) y el LOD 3 usa **half float** (f16). Al principio creímos que el juego siempre leía f16, porque en la prueba se veía el LOD 3 (el objeto es chico en pantalla). Revisando la declaración de cada LOD en la etapa 10 apareció la verdad, y ahora cada LOD se escribe en su formato. Go no tiene `float16`, así que esa conversión está escrita a mano: separa exponente y mantisa, redondea al par más cercano y maneja los números muy chicos (subnormales).
 
 **La normal comprimida (`PackTangentFrame`).** Hay que meter dos direcciones 3D en 32 bits:
 - **La normal** se proyecta sobre un octaedro (un "diamante"), lo que deja 2 números de 10 bits cada uno.

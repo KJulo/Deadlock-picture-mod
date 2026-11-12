@@ -51,6 +51,7 @@ func main() {
 		rotate     = flag.Float64("rotate", 0, "rotate the photo clockwise (degrees)")
 		downloads  = flag.Bool("downloads", false, "also copy the VPK to ~/Downloads/catmod_go.vpk")
 		install    = flag.Bool("install", false, "copy to Deadlock's addons/pak09_dir.vpk (restart the game)")
+		lodTest    = flag.Bool("lodtest", false, "diagnostic: each LOD shows a coloured band labelled 'LOD n' (no photo needed)")
 		citadel    = flag.String("citadel", filepath.Join(home, ".local/share/Steam/steamapps/common/Deadlock/game/citadel"), "Deadlock game/citadel dir")
 	)
 	flag.Usage = func() {
@@ -58,7 +59,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	if flag.NArg() != 1 {
+	if flag.NArg() != 1 && !*lodTest {
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -76,16 +77,21 @@ func main() {
 		fail(err)
 	}
 
-	data, err := os.ReadFile(flag.Arg(0))
-	if err != nil {
-		fail(err)
-	}
 	start := time.Now()
 	tpl, err := build.LoadTemplates(templates.Dir(*tplDir))
 	if err != nil {
 		fail(err)
 	}
-	res, err := build.Mod(tpl, data, p)
+	var res *build.Result
+	if *lodTest {
+		res, err = build.LODTest(tpl)
+	} else {
+		var data []byte
+		if data, err = os.ReadFile(flag.Arg(0)); err != nil {
+			fail(err)
+		}
+		res, err = build.Mod(tpl, data, p)
+	}
 	if err != nil {
 		fail(err)
 	}

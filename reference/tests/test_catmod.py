@@ -86,8 +86,15 @@ def test_build_mod_end_to_end():
     del vpk
 
 
-def test_uv_stored_as_half_float():
-    # the game decodes the TEXCOORD stream as R16G16_FLOAT (confirmed in game), not the declared SNORM
-    vb, _, _ = build_buffers(1444, 3264, 6.3)
-    uv = vb[:, 12:16].copy().view(np.float16).astype(float)
-    assert uv.min() >= 0 and uv.max() <= 1 and uv.max() > 0.9
+def test_uv_format_follows_each_lod_declaration():
+    # LODs 0-2 declare R16G16_SNORM, LOD3 declares R16G16_FLOAT: each stores its own format
+    from catmod.vmdl import build_sphere_model, decode_lod
+    if not have_templates:
+        pytest.skip("templates missing")
+    model, _ = build_sphere_model(templates.load(templates.MODEL))
+    for lod, fmt in enumerate(templates.MODEL_LOD_UV):
+        _, uv, _ = decode_lod(model, lod)            # decoded with the declared format
+        assert uv.min() >= 0 and uv.max() <= 1 and uv.max() > 0.9, (lod, fmt)
+        wrong = "f16" if fmt == "snorm" else "snorm"
+        _, bad, _ = decode_lod(model, lod, wrong)     # the other format gives nonsense
+        assert not (np.nanmin(bad) >= 0 and np.nanmax(bad) <= 1 and np.nanmax(bad) > 0.9), lod
