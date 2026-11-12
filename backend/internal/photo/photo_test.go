@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"image"
+	"image/draw"
 	"image/jpeg"
 	"image/png"
 	"os"
@@ -174,5 +175,55 @@ func TestValidate(t *testing.T) {
 	bad.Radius = 99
 	if bad.Validate() == nil {
 		t.Error("radius 99 accepted")
+	}
+}
+
+// Big photos are shrunk to MaxSide; JPEG decoding through the fast path matches image/draw.
+func TestLargePhotoIsShrunk(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, MaxSide*2+10, 100))
+	for i := range img.Pix {
+		img.Pix[i] = 200
+		if i%4 == 3 {
+			img.Pix[i] = 255 // opaque (image.RGBA is premultiplied)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	p := DefaultParams()
+	p.Contrast, p.Saturation = 1, 1
+	m, err := Load(buf.Bytes(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.W > MaxSide || m.H != 100/3 {
+		t.Errorf("got %dx%d", m.W, m.H)
+	}
+	if m.Pix[0] != 200 {
+		t.Errorf("pixel %d, want 200", m.Pix[0])
+	}
+}
+
+func TestJPEGFastPathMatchesDraw(t *testing.T) {
+	src := image.NewRGBA(image.Rect(0, 0, 64, 48))
+	for i := range src.Pix {
+		src.Pix[i] = byte(i * 37)
+	}
+	for i := 3; i < len(src.Pix); i += 4 {
+		src.Pix[i] = 255
+	}
+	var buf bytes.Buffer
+	jpeg.Encode(&buf, src, &jpeg.Options{Quality: 90})
+	dec, _ := jpeg.Decode(bytes.NewReader(buf.Bytes()))
+	ref := image.NewNRGBA(dec.Bounds())
+	draw.Draw(ref, ref.Bounds(), dec, image.Point{}, draw.Src)
+	got := toRGB(dec)
+	for i := 0; i < 64*48; i++ {
+		for c := 0; c < 3; c++ {
+			if got.Pix[i*3+c] != ref.Pix[i*4+c] {
+				t.Fatalf("pixel %d channel %d: %d vs draw %d", i, c, got.Pix[i*3+c], ref.Pix[i*4+c])
+			}
+		}
 	}
 }

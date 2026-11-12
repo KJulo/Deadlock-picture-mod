@@ -231,3 +231,22 @@ func BuildBuffers(vertexCount, indexCount int, radius float64) ([]byte, []uint32
 	}
 	return vb, idx, g, nil
 }
+
+// HalfToFloat decodes an IEEE 754 half-precision value (what the game reads from the UV bytes).
+func HalfToFloat(h uint16) float64 {
+	sign := 1.0
+	if h&0x8000 != 0 {
+		sign = -1
+	}
+	exp, frac := int(h>>10&0x1f), float64(h&0x3ff)
+	switch exp {
+	case 0: // zero / subnormal
+		return sign * math.Ldexp(frac, -24)
+	case 31:
+		if frac == 0 {
+			return sign * math.Inf(1)
+		}
+		return math.NaN()
+	}
+	return sign * math.Ldexp(1+frac/1024, exp-15)
+}

@@ -53,25 +53,25 @@ func (p Params) Validate() error {
 	in := func(v, lo, hi float64) bool { return v >= lo && v <= hi && !math.IsNaN(v) }
 	switch {
 	case p.Layout != "cube6" && p.Layout != "twice" && p.Layout != "wrap":
-		return fmt.Errorf("photo: unknown layout %q", p.Layout)
+		return fmt.Errorf("%w: unknown layout %q", ErrBadParams, p.Layout)
 	case p.Projection != "equidistant" && p.Projection != "ortho":
-		return fmt.Errorf("photo: unknown projection %q", p.Projection)
+		return fmt.Errorf("%w: unknown projection %q", ErrBadParams, p.Projection)
 	case p.Back != "mirror" && p.Back != "flip" && p.Back != "color":
-		return fmt.Errorf("photo: unknown back %q", p.Back)
+		return fmt.Errorf("%w: unknown back %q", ErrBadParams, p.Back)
 	case !in(p.Center[0], 0, 1) || !in(p.Center[1], 0, 1):
-		return fmt.Errorf("photo: center must be within 0..1")
+		return fmt.Errorf("%w: center must be within 0..1", ErrBadParams)
 	case !in(p.Radius, 0.05, 1.5):
-		return fmt.Errorf("photo: radius must be within 0.05..1.5")
+		return fmt.Errorf("%w: radius must be within 0.05..1.5", ErrBadParams)
 	case !in(p.StickerDeg, 5, 90):
-		return fmt.Errorf("photo: sticker_deg must be within 5..90")
+		return fmt.Errorf("%w: sticker_deg must be within 5..90", ErrBadParams)
 	case !in(p.RingDeg, 0, 30):
-		return fmt.Errorf("photo: ring_deg must be within 0..30")
+		return fmt.Errorf("%w: ring_deg must be within 0..30", ErrBadParams)
 	case !in(p.ColorAlpha, 0, 1) || !in(p.Roughness, 0, 1):
-		return fmt.Errorf("photo: color_alpha and roughness must be within 0..1")
+		return fmt.Errorf("%w: color_alpha and roughness must be within 0..1", ErrBadParams)
 	case !in(p.Contrast, 0, 3) || !in(p.Saturation, 0, 3):
-		return fmt.Errorf("photo: contrast and saturation must be within 0..3")
+		return fmt.Errorf("%w: contrast and saturation must be within 0..3", ErrBadParams)
 	case !in(p.RotationDeg, -360, 360):
-		return fmt.Errorf("photo: rotation_deg must be within -360..360")
+		return fmt.Errorf("%w: rotation_deg must be within -360..360", ErrBadParams)
 	}
 	return nil
 }

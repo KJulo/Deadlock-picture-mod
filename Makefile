@@ -1,6 +1,6 @@
 PY := .venv/bin/python
 
-.PHONY: help setup fetch golden test test-go test-py vpk
+.PHONY: help setup fetch golden test test-go test-py vpk dev
 
 help:
 	@echo "make setup    crea .venv con las dependencias del Python de referencia"
@@ -8,6 +8,7 @@ help:
 	@echo "make golden   regenera testdata/ (lo que el Go compara contra el Python)"
 	@echo "make test     corre los tests de Python y de Go"
 	@echo "make test-go  solo Go (ej: make test-go RUN=TestParse)"
+	@echo "make dev      levanta la API en http://localhost:8080 (ver docs/lessons/06-api.md)"
 	@echo "make vpk PHOTO=assets/cat.jpg [ARGS='-layout wrap -downloads']  arma el VPK con el backend Go"
 
 setup:
@@ -30,3 +31,6 @@ test-go:
 PHOTO ?= assets/cat.jpg
 vpk:
 	cd backend && go run ./cmd/catmod $(ARGS) ../$(PHOTO)
+
+dev:
+	cd backend && go run ./cmd/server

@@ -177,3 +177,16 @@ func TestBudgets(t *testing.T) {
 		}
 	}
 }
+
+func TestHalfToFloatRoundtrip(t *testing.T) {
+	for _, x := range []float64{0, 1, 0.5, -2, 65504, 6.103515625e-05, 5.960464477539063e-08, 0.333251953125} {
+		if got := HalfToFloat(Float16(x)); got != x {
+			t.Errorf("HalfToFloat(Float16(%v)) = %v", x, got)
+		}
+	}
+	for h := uint16(0); h < 0x7c00; h++ { // every finite positive half survives a roundtrip
+		if Float16(HalfToFloat(h)) != h {
+			t.Fatalf("half %#04x does not roundtrip", h)
+		}
+	}
+}

@@ -3,9 +3,10 @@ package photo
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"image"
-	"image/draw"
+	"image/color"
 	_ "image/gif" // registers decoders with image.Decode
 	_ "image/jpeg"
 	_ "image/png"
@@ -22,22 +23,33 @@ type RGB struct {
 
 func (m *RGB) at(x, y int) []uint8 { i := (y*m.W + x) * 3; return m.Pix[i : i+3] }
 
-// MaxPixels limits decoded photo size (a 12 MP phone photo is ~12e6).
-const MaxPixels = 50_000_000
+// MaxPixels limits the photo size accepted for decoding (48 MP phone photos must fit).
+const MaxPixels = 60_000_000
+
+// Errors callers can tell apart with errors.Is (the API maps them to HTTP status codes).
+var (
+	ErrBadPhoto      = errors.New("photo: unsupported or corrupt image")
+	ErrPhotoTooLarge = errors.New("photo: image dimensions too large")
+	ErrBadParams     = errors.New("photo: invalid parameters")
+)
+
+// MaxSide is the working resolution: larger photos are shrunk to it right after decoding. A
+// sticker covers ~460 texels of the 2048 texture, so 4096 is plenty, and it keeps memory low.
+const MaxSide = 4096
 
 // Load decodes a photo (JPEG, PNG, GIF or WebP), applies its EXIF orientation, the rotation and
 // the contrast/saturation tweaks of p — the same steps as photo.load_photo in the python reference.
 func Load(data []byte, p Params) (*RGB, error) {
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("photo: unsupported or corrupt image: %w", err)
+		return nil, fmt.Errorf("%w (%v)", ErrBadPhoto, err)
 	}
 	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width*cfg.Height > MaxPixels {
-		return nil, fmt.Errorf("photo: %dx%d is too large", cfg.Width, cfg.Height)
+		return nil, fmt.Errorf("%w: %dx%d", ErrPhotoTooLarge, cfg.Width, cfg.Height)
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("photo: decode %s: %w", format, err)
+		return nil, fmt.Errorf("%w (%s: %v)", ErrBadPhoto, format, err)
 	}
 	m := toRGB(img)
 	if format == "jpeg" {
@@ -50,13 +62,61 @@ func Load(data []byte, p Params) (*RGB, error) {
 	return saturation(m, p.Saturation), nil
 }
 
+// pixelReader returns a fast per-pixel RGB accessor for the common decoded image types
+// (img.At allocates per call, far too slow for a 48 MP photo).
+func pixelReader(img image.Image) func(x, y int) (r, g, b uint8) {
+	switch m := img.(type) {
+	case *image.YCbCr: // JPEG
+		return func(x, y int) (uint8, uint8, uint8) {
+			yi, ci := m.YOffset(x, y), m.COffset(x, y)
+			return color.YCbCrToRGB(m.Y[yi], m.Cb[ci], m.Cr[ci])
+		}
+	case *image.NRGBA: // transparency is dropped without compositing, like PIL's convert("RGB")
+		return func(x, y int) (uint8, uint8, uint8) {
+			i := m.PixOffset(x, y)
+			return m.Pix[i], m.Pix[i+1], m.Pix[i+2]
+		}
+	case *image.RGBA:
+		return func(x, y int) (uint8, uint8, uint8) {
+			i := m.PixOffset(x, y)
+			if a := m.Pix[i+3]; a != 255 && a != 0 { // premultiplied -> straight
+				return uint8(int(m.Pix[i]) * 255 / int(a)), uint8(int(m.Pix[i+1]) * 255 / int(a)), uint8(int(m.Pix[i+2]) * 255 / int(a))
+			}
+			return m.Pix[i], m.Pix[i+1], m.Pix[i+2]
+		}
+	case *image.Gray:
+		return func(x, y int) (uint8, uint8, uint8) {
+			v := m.Pix[m.PixOffset(x, y)]
+			return v, v, v
+		}
+	}
+	return func(x, y int) (uint8, uint8, uint8) { // anything else (palettes, 16-bit PNG, ...)
+		c := color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA)
+		return c.R, c.G, c.B
+	}
+}
+
+// toRGB converts to 8-bit RGB, shrinking by an integer factor (box average) if a side exceeds
+// MaxSide. Photos within MaxSide are copied exactly.
 func toRGB(img image.Image) *RGB {
 	b := img.Bounds()
-	nrgba := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(nrgba, nrgba.Bounds(), img, b.Min, draw.Src)
-	m := &RGB{b.Dx(), b.Dy(), make([]uint8, b.Dx()*b.Dy()*3)}
-	for i := 0; i < b.Dx()*b.Dy(); i++ {
-		copy(m.Pix[i*3:i*3+3], nrgba.Pix[i*4:i*4+3]) // transparency is dropped, like convert("RGB")
+	w, h := b.Dx(), b.Dy()
+	k := (max(w, h) + MaxSide - 1) / MaxSide // shrink factor, 1 = none
+	ow, oh := max(w/k, 1), max(h/k, 1)
+	read := pixelReader(img)
+	m := &RGB{ow, oh, make([]uint8, ow*oh*3)}
+	for y := 0; y < oh; y++ {
+		for x := 0; x < ow; x++ {
+			var sr, sg, sb int
+			for dy := 0; dy < k; dy++ {
+				for dx := 0; dx < k; dx++ {
+					r, g, bl := read(b.Min.X+x*k+dx, b.Min.Y+y*k+dy)
+					sr, sg, sb = sr+int(r), sg+int(g), sb+int(bl)
+				}
+			}
+			n, i := k*k, (y*ow+x)*3
+			m.Pix[i], m.Pix[i+1], m.Pix[i+2] = uint8((sr+n/2)/n), uint8((sg+n/2)/n), uint8((sb+n/2)/n)
+		}
 	}
 	return m
 }
