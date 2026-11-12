@@ -1,0 +1,49 @@
+---
+import Plate from './Plate.astro';
+---
+<section id="instalar" class="install wrap" aria-labelledby="instalar-title">
+  <Plate as="div">
+    <h2 id="instalar-title">Instalarlo en Deadlock</h2>
+    <ol class="steps">
+      <li>
+        <span class="numeral" aria-hidden="true">I</span>
+        <p>Abre <strong>Deadlock Mod Manager</strong> y elige <em>agregar un mod local</em>. Selecciona el
+        <code>.vpk</code> que forjaste.</p>
+      </li>
+      <li>
+        <span class="numeral" aria-hidden="true">II</span>
+        <p>Actívalo. Si tienes otro mod que cambie el contenedor de almas, desactívalo: con dos
+        activos solo se verá uno de ellos.</p>
+      </li>
+      <li>
+        <span class="numeral" aria-hidden="true">III</span>
+        <p>Entra al juego. Para verlo sin esperar a una partida, abre la consola en el modo sandbox o
+        en una partida privada y escribe:</p>
+      </li>
+    </ol>
+    <pre><code>sv_cheats 1
+citadel_give_gold 5000 1
+kill</code></pre>
+    <p class="aside">El primero activa los trucos, el segundo te da almas sin asegurar y el tercero te
+    elimina para que la esfera aparezca.</p>
+  </Plate>
+</section>
+<style>
+  .install { padding-block: 32px; }
+  h2 { font-size: clamp(1.8rem, 3vw, 2.4rem); margin-bottom: 22px; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+  .steps li { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: baseline; }
+  .steps p { margin: 0; }
+  .numeral {
+    font-family: var(--font-display); color: var(--parchment); background: var(--teal-deep);
+    min-width: 2.1em; padding: 0.1em 0.4em; text-align: center;
+    clip-path: polygon(12% 0, 88% 0, 100% 50%, 88% 100%, 12% 100%, 0 50%);
+  }
+  code { color: var(--teal-deep); }
+  pre {
+    margin: 18px 0 10px; padding: 16px 20px; overflow-x: auto;
+    background: var(--night); color: var(--soul); border-left: 3px solid var(--brass);
+  }
+  pre code { color: inherit; font-size: 0.95rem; line-height: 1.7; }
+  .aside { margin: 0; font-style: italic; color: var(--ink-soft); }
+</style>

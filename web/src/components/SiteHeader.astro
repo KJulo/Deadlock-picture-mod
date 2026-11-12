@@ -1,0 +1,29 @@
+---
+import { SITE } from '../site.js';
+---
+<header class="site-header wrap">
+  <a class="mark" href="/" aria-label={`${SITE.name}, inicio`}>
+    <svg viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M20 2 38 20 20 38 2 20Z" />
+      <circle cx="20" cy="20" r="7" />
+    </svg>
+    <span class="name">{SITE.name}</span>
+  </a>
+  <nav aria-label="Secciones">
+    <a class="caps" href="#taller">Taller</a>
+    <a class="caps" href="#instalar">Instalar</a>
+    <a class="caps" href="#preguntas">Preguntas</a>
+  </nav>
+</header>
+<style>
+  .site-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 22px; }
+  .mark { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+  .mark svg { width: 34px; height: 34px; }
+  .mark path { fill: none; stroke: var(--brass-bright); stroke-width: 1.6; }
+  .mark circle { fill: var(--teal); stroke: var(--soul); stroke-width: 1.4; }
+  .name { font-family: var(--font-display); font-size: 1.6rem; letter-spacing: 0.06em; color: var(--parchment); }
+  nav { display: flex; gap: clamp(12px, 3vw, 32px); }
+  nav a { text-decoration: none; color: var(--parchment-3); }
+  nav a:hover { color: var(--soul); }
+  @media (max-width: 560px) { nav { display: none; } }
+</style>

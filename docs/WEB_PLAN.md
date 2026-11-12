@@ -33,7 +33,7 @@ web/  Astro estático                       backend/  Go (net/http) en Docker
 | 6 | API HTTP (`cmd/server`): `/api/build`, `/api/texture`, `/api/mesh`, `/api/defaults`, `/healthz`; límites, validación, cola con 503, timeouts, CORS, logs JSON, apagado ordenado; la foto nunca toca el disco — [explicación](lessons/06-api.md) | ✅ |
 | 7 | Docker (estático + distroless, 38,6 MB) + scripts de deploy a Cloud Run (Artifact Registry privado, `--max-instances 2`), gzip en la API, CI — [guía](lessons/07-deploy.md) | 🟡 listo; faltan los pasos de tu cuenta de Google Cloud |
 | 8 | Preview fiel: malla real (`/api/mesh?lod=`, UV f16), textura de la API, shader con los valores del `.vmat` (pulso `-0.2·sin(3t)`, Fresnel, transmisión, contorno), brillo y brasas de los `.vpcf` — [explicación](lessons/08-preview.md) | 🟡 hecho; falta calibrar con una captura del juego |
-| 9 | `web/` en Astro con diseño propio inspirado en Deadlock: art déco, Nueva York ocultista de los años 20, pergamino, turquesa y latón, tipografías serif. Sin logos ni assets de Valve; aviso de fan-made | |
+| 9 | `web/` en Astro 7: diseño propio art déco (pergamino, latón, turquesa "alma"), taller con encuadre arrastrable, visor en arco, instalación y preguntas; sin assets de Valve, aviso fan-made — [explicación](lessons/09-sitio.md) | ✅ |
 | 10 | Variantes: jaula original con UV recodificadas a f16 y fotos en discos o marcos (requiere prueba en el juego) | |
 
 ## Pendientes / riesgos

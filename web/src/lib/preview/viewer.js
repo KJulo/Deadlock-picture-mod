@@ -50,6 +50,8 @@ export function createViewer(canvas, { mesh, background = 0x14181c } = {}) {
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.enablePan = false;
+  let userMoved = false;
+  controls.addEventListener('start', () => { userMoved = true; });
 
   const material = createSoulMaterial(placeholderTexture());
   const outline = createOutlineMaterial();
@@ -83,10 +85,20 @@ export function createViewer(canvas, { mesh, background = 0x14181c } = {}) {
     orb.add(hull, body);
     shadow.scale.setScalar(radius * 2.6);
     shadow.position.y = -radius * 1.02;
-    camera.position.set(radius * 3.6, radius * 1.3, radius * 2.2);
     controls.target.set(0, 0, 0);
     controls.minDistance = radius * 1.8;
     controls.maxDistance = radius * 12;
+    frameSphere();
+  }
+
+  // Distance at which the sphere (plus a margin for the glow) fits the narrower side of the view.
+  const viewDir = new THREE.Vector3(3.6, 1.3, 2.2).normalize();
+  function frameSphere() {
+    const vfov = (camera.fov * Math.PI) / 180;
+    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
+    const dist = (radius * 1.35) / Math.sin(Math.min(vfov, hfov) / 2);
+    camera.position.copy(viewDir).multiplyScalar(dist);
+    controls.update();
   }
   if (mesh) setMesh(mesh);
 
@@ -113,14 +125,16 @@ export function createViewer(canvas, { mesh, background = 0x14181c } = {}) {
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      if (!userMoved) frameSphere(); // keep it framed until the user takes control
     }
   }
 
-  const clock = new THREE.Clock();
+  const timer = new THREE.Timer();
   let time = 0;
-  function frame() {
+  function frame(timestamp) {
     resize();
-    const dt = Math.min(clock.getDelta(), 0.1);
+    timer.update(timestamp);
+    const dt = Math.min(timer.getDelta(), 0.1);
     time += dt;
     if (options.spin) { orb.rotation.y += dt * 0.35; orb.rotation.x = Math.sin(time * 0.4) * 0.35; }
     material.uniforms.uTime.value = time;
@@ -137,6 +151,6 @@ export function createViewer(canvas, { mesh, background = 0x14181c } = {}) {
     setMesh, setTextureBlob, set,
     material, // exposed for calibration (uniforms)
     snapshot: () => canvas.toDataURL('image/png'),
-    dispose() { renderer.setAnimationLoop(null); renderer.dispose(); controls.dispose(); },
+    dispose() { renderer.setAnimationLoop(null); renderer.dispose(); controls.dispose(); timer.dispose?.(); },
   };
 }

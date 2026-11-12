@@ -1,0 +1,88 @@
+/* ---------------------------------------------------------------------------------------------
+   Relicario — art deco, 1920s occult New York. Parchment plates framed in brass on a teal night.
+   --------------------------------------------------------------------------------------------- */
+:root {
+  --night: #0e1719;
+  --night-2: #132226;
+  --night-3: #1a2f34;
+  --parchment: #efe5cf;
+  --parchment-2: #e3d5b6;
+  --parchment-3: #d2c09a;
+  --ink: #2a2117;
+  --ink-soft: #5b4d3b;
+  --brass: #a8834c;
+  --brass-bright: #d8b676;
+  --brass-dark: #6f5430;
+  --soul: #29ffc9;          /* the in-game glow colour (holding_gold_neutral_model_glow) */
+  --teal: #18788c;
+  --teal-deep: #0c4652;
+  --oxblood: #7d2b25;
+
+  --font-display: 'Limelight', 'Bodoni Moda', serif;
+  --font-serif: 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
+  --font-caps: 'Josefin Sans', 'Futura', 'Century Gothic', sans-serif;
+
+  --gutter: clamp(16px, 4vw, 48px);
+  --radius: 2px;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--parchment);
+  background-color: var(--night);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(41, 255, 201, 0.10), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(168, 131, 76, 0.10), transparent 60%),
+    repeating-linear-gradient(90deg, rgba(216, 182, 118, 0.035) 0 1px, transparent 1px 120px);
+  font: 400 1.125rem/1.55 var(--font-serif);
+  overflow-x: hidden;
+}
+
+/* subtle grain over everything (no image request: an inline SVG filter) */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.07;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+img, svg, canvas { display: block; max-width: 100%; }
+
+a { color: inherit; text-decoration-color: var(--brass); text-underline-offset: 0.2em; }
+a:hover { color: var(--brass-bright); }
+
+:focus-visible { outline: 2px solid var(--soul); outline-offset: 3px; }
+
+h1, h2, h3 { font-family: var(--font-serif); font-weight: 600; line-height: 1.1; margin: 0; }
+
+.caps {
+  font-family: var(--font-caps);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.wrap { width: min(1200px, 100% - 2 * var(--gutter)); margin-inline: auto; }
+
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+code, kbd {
+  font-family: ui-monospace, 'JetBrains Mono', Menlo, monospace;
+  font-size: 0.85em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

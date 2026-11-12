@@ -1,0 +1,28 @@
+---
+import { SITE } from '../site.js';
+import Divider from './Divider.astro';
+---
+<section class="hero wrap">
+  <p class="caps eyebrow">Un mod para Deadlock, hecho por fans</p>
+  <h1>{SITE.name}</h1>
+  <p class="tagline">{SITE.tagline}</p>
+  <Divider />
+  <p class="lede">
+    Cuando caes con almas sin asegurar, queda una esfera que el enemigo puede reclamar. Aquí puedes
+    ponerle tu foto: la de tu gato, la de tu equipo o la de tu peor enemigo. La previsualizas en 3D
+    tal como la verás en partida y te llevas un <code>.vpk</code> listo para instalar.
+  </p>
+</section>
+<style>
+  .hero { text-align: center; padding-block: clamp(8px, 2vw, 20px) clamp(20px, 3vw, 32px); display: grid; gap: 12px; justify-items: center; }
+  .eyebrow { margin: 0; color: var(--brass-bright); }
+  h1 {
+    font-family: var(--font-display); font-weight: 400;
+    font-size: clamp(3rem, 8vw, 5.4rem); letter-spacing: 0.05em; line-height: 0.95;
+    color: var(--parchment);
+    text-shadow: 0 0 40px rgba(41, 255, 201, 0.25);
+  }
+  .tagline { margin: 0; font-size: clamp(1.3rem, 2.6vw, 1.8rem); font-style: italic; color: var(--parchment-2); }
+  .lede { margin: 6px 0 0; max-width: 60ch; color: var(--parchment-3); }
+  .lede code { color: var(--soul); }
+</style>

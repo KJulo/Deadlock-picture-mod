@@ -57,8 +57,8 @@ reference/        implementación en Python: la fuente de verdad, probada en el 
   catmod/         núcleo (build, photo, mesh, vmdl, vtex, resource, preview, templates)
   scripts/        CLI, make_golden.py, script para DMM
   tests/          pytest
-backend/          backend en Go (en construcción, ver docs/lessons/)
-web/              sitio Astro (pendiente)
+backend/          backend en Go: núcleo del mod, API HTTP, Docker y deploy (docs/lessons/01-07)
+web/              sitio Astro con el visor 3D (docs/lessons/08-09) — `make web`
 testdata/         golden files: lo que genera el Python y contra lo que se compara el Go
 templates/        archivos base del juego (gitignored, `make fetch`)
 docs/             WEB_PLAN.md y lecciones

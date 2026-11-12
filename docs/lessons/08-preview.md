@@ -1,6 +1,6 @@
 # Etapa 8: el preview fiel al juego
 
-**Código:** `web/src/lib/preview/` (módulos que importará el sitio Astro), `web/preview-dev/index.html` (página de prueba) · **Probar:** `make preview` y abrir http://localhost:4321/web/preview-dev/index.html
+**Código:** `web/src/lib/preview/` (lo usa el sitio Astro, ver etapa 9) · **Probar:** `make web` y abrir http://localhost:4321
 
 ## Por qué el preview anterior "mentía"
 El HTML de antes generaba su propia esfera en JavaScript con UV perfectas. El juego, en cambio, lee las UV del archivo **como half floats**. Cuando las guardábamos como enteros (SNORM), el navegador mostraba la foto bien y el juego la mostraba rota. Un preview que no usa los mismos datos que el juego no puede avisarte de ese tipo de errores.

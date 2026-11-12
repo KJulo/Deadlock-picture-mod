@@ -1,0 +1,17 @@
+---
+import { SITE } from '../site.js';
+import Divider from './Divider.astro';
+---
+<footer class="site-footer wrap">
+  <Divider />
+  <p>
+    Proyecto hecho por fans. No está afiliado ni respaldado por Valve Corporation; Deadlock es una
+    marca de Valve. El mod solo cambia lo que ves tú: los demás jugadores siguen viendo el
+    contenedor original.
+  </p>
+  <p class="caps"><a href={SITE.repo}>Código en GitHub</a></p>
+</footer>
+<style>
+  .site-footer { text-align: center; padding-block: 48px 64px; color: var(--parchment-3); display: grid; gap: 18px; }
+  p { margin: 0 auto; max-width: 62ch; font-size: 1rem; }
+</style>

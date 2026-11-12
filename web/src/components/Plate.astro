@@ -1,0 +1,35 @@
+---
+// A parchment plate framed by a double brass rule with stepped deco corners.
+interface Props { as?: string; class?: string; id?: string; labelledby?: string }
+const { as: Tag = 'section', class: cls, id, labelledby } = Astro.props;
+---
+<Tag class:list={['plate', cls]} id={id} aria-labelledby={labelledby}>
+  {['tl', 'tr', 'bl', 'br'].map((c) => (
+    <svg class={`corner ${c}`} viewBox="0 0 28 28" aria-hidden="true">
+      <path d="M1 27V9h4V5h4V1h18M7 27V13h4V9h4V7h12" />
+    </svg>
+  ))}
+  <slot />
+</Tag>
+<style>
+  .plate {
+    position: relative;
+    color: var(--ink);
+    background:
+      radial-gradient(ellipse at 30% 0%, rgba(255, 255, 255, 0.35), transparent 55%),
+      radial-gradient(ellipse at 100% 100%, rgba(120, 90, 40, 0.18), transparent 60%),
+      var(--parchment);
+    padding: clamp(24px, 4vw, 44px);
+    box-shadow:
+      inset 0 0 0 1px var(--brass),
+      inset 0 0 0 6px var(--parchment),
+      inset 0 0 0 7px var(--brass-dark),
+      0 30px 60px -30px rgba(0, 0, 0, 0.8);
+  }
+  .corner { position: absolute; width: 28px; height: 28px; }
+  .corner path { fill: none; stroke: var(--brass-dark); stroke-width: 1.4; }
+  .tl { top: 12px; left: 12px; }
+  .tr { top: 12px; right: 12px; transform: scaleX(-1); }
+  .bl { bottom: 12px; left: 12px; transform: scaleY(-1); }
+  .br { bottom: 12px; right: 12px; transform: scale(-1); }
+</style>
