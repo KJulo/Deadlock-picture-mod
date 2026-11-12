@@ -10,6 +10,7 @@
 //	cube6  6 stickers at the cube face centres (±X, ±Y, ±Z)   <- default, readable from anywhere
 //	twice  2 stickers, front (+X) and back (-X)
 //	wrap   one photo wrapped around the whole sphere (front +X, back per Params.Back)
+//	single one sticker at the front (+X); sticker_deg up to 90 sets how much of the sphere it covers
 package photo
 
 import (
@@ -27,7 +28,7 @@ const TexSize = 2048
 type Params struct {
 	Variant     string     `json:"variant"`     // sphere (our sphere) | cage (the original model)
 	Shape       string     `json:"shape"`       // sphere variant only: mesh.ShapeNames or "medallions"
-	Layout      string     `json:"layout"`      // cube6 | twice | wrap (sphere only)
+	Layout      string     `json:"layout"`      // cube6 | twice | wrap | single (sphere only)
 	Center      [2]float64 `json:"center"`      // photo point (0..1) placed at each sticker's centre
 	Radius      float64    `json:"radius"`      // photo disc radius, fraction of the shorter side
 	Projection  string     `json:"projection"`  // equidistant | ortho
@@ -60,7 +61,7 @@ func (p Params) Validate() error {
 		return fmt.Errorf("%w: unknown variant %q", ErrBadParams, p.Variant)
 	case !validShape(p.Shape):
 		return fmt.Errorf("%w: unknown shape %q", ErrBadParams, p.Shape)
-	case p.Layout != "cube6" && p.Layout != "twice" && p.Layout != "wrap":
+	case p.Layout != "cube6" && p.Layout != "twice" && p.Layout != "wrap" && p.Layout != "single":
 		return fmt.Errorf("%w: unknown layout %q", ErrBadParams, p.Layout)
 	case p.Projection != "equidistant" && p.Projection != "ortho":
 		return fmt.Errorf("%w: unknown projection %q", ErrBadParams, p.Projection)
@@ -98,6 +99,8 @@ var layouts = map[string][]sticker{
 	"cube6": {{vec{1, 0, 0}, vec{0, 0, 1}}, {vec{-1, 0, 0}, vec{0, 0, 1}}, {vec{0, 1, 0}, vec{0, 0, 1}},
 		{vec{0, -1, 0}, vec{0, 0, 1}}, {vec{0, 0, 1}, vec{-1, 0, 0}}, {vec{0, 0, -1}, vec{1, 0, 0}}},
 	"twice": {{vec{1, 0, 0}, vec{0, 0, 1}}, {vec{-1, 0, 0}, vec{0, 0, 1}}},
+	// one seal whose size (sticker_deg, up to 90 = half the sphere) sets how much it covers
+	"single": {{vec{1, 0, 0}, vec{0, 0, 1}}},
 }
 
 // discCoords maps direction d into a sticker's unit disc (sx right, sy up; radius 1 at maxAngle)

@@ -254,9 +254,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   function params() {
     return {
       shape: checked('shape'),
-      // "single" is the backend's wrap layout with the back half in the background colour
-      layout: isMedallions() ? 'cube6' : checked('layout') === 'single' ? 'wrap' : checked('layout'),
-      back: checked('layout') === 'single' ? 'color' : 'mirror',
+      layout: isMedallions() ? 'cube6' : checked('layout'),
       center: [center.x, center.y],
       radius: +$<HTMLInputElement>('radius').value,
       sticker_deg: +$<HTMLInputElement>('sticker_deg').value,
@@ -281,7 +279,15 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   const later = () => { clearTimeout(timer); timer = window.setTimeout(refresh, 250); };
 
   function syncLayout() {
-    const wrap = !isMedallions() && ['wrap', 'single'].includes(checked('layout') ?? '');
+    const wrap = !isMedallions() && checked('layout') === 'wrap';
+    // one seal can grow to half the sphere (90°); several seals stop at 45° so they never meet
+    const single = !isMedallions() && checked('layout') === 'single';
+    const size = $<HTMLInputElement>('sticker_deg');
+    const max = single ? 90 : 45;
+    if (size.max !== String(max)) {
+      size.max = String(max);
+      size.value = single ? '90' : String(Math.min(+size.value, 40));
+    }
     $('layouts').hidden = isMedallions(); // medallions are always the six seals
     $('sticker-opts').hidden = wrap;
     $('ring-colors').hidden = wrap;

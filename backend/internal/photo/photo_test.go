@@ -8,6 +8,7 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -295,5 +296,29 @@ func TestMedallionTexture(t *testing.T) {
 	}
 	if c := tex.NRGBAAt(128, 250); c.R != 1 || c.G != 2 || c.B != 3 {
 		t.Errorf("unused area: %v", c)
+	}
+}
+
+func TestSingleLayoutSizeFollowsStickerDeg(t *testing.T) {
+	img := &RGB{W: 4, H: 4, Pix: make([]uint8, 4*4*3)}
+	for i := range img.Pix {
+		img.Pix[i] = 200
+	}
+	// equirect texel at θ = 90° (equator) and longitude φ from the front (+X)
+	at := func(tex *image.NRGBA, phDeg float64) uint8 {
+		size := tex.Bounds().Dx()
+		col := int(math.Mod(phDeg+360, 360) / 360 * float64(size))
+		return tex.NRGBAAt(col, size/2).R
+	}
+	for _, deg := range []float64{30, 60, 90} {
+		p := DefaultParams()
+		p.Layout, p.StickerDeg, p.RingDeg, p.BgColor = "single", deg, 0, [3]uint8{1, 1, 1}
+		tex, err := SphereTexture(img, p, 360)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if at(tex, deg-3) != 200 || at(tex, deg+3) != 1 || at(tex, 180) != 1 {
+			t.Errorf("sticker_deg %v: inside %d, outside %d, back %d", deg, at(tex, deg-3), at(tex, deg+3), at(tex, 180))
+		}
 	}
 }
