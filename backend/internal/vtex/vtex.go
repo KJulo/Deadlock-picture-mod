@@ -47,6 +47,26 @@ func ReadInfo(data []byte) (Info, *resource.Resource, error) {
 	return Info{int(le.Uint16(d[20:])), int(le.Uint16(d[22:])), int(d[26]), int(d[27])}, res, nil
 }
 
+// DecodeTop returns the largest mip of a BC7 texture as an image (e.g. to paint over the original).
+func DecodeTop(data []byte) (*image.NRGBA, error) {
+	info, res, err := ReadInfo(data)
+	if err != nil {
+		return nil, err
+	}
+	if info.Format != FormatBC7 {
+		return nil, fmt.Errorf("vtex: format %d is not BC7", info.Format)
+	}
+	n := (info.Width / 4) * (info.Height / 4) * bc7.BlockSize
+	if len(res.Trailer) < n {
+		return nil, fmt.Errorf("vtex: pixel data too short")
+	}
+	pix, err := bc7.Decode(res.Trailer[len(res.Trailer)-n:], info.Width, info.Height) // largest mip is last
+	if err != nil {
+		return nil, err
+	}
+	return &image.NRGBA{Pix: pix, Stride: info.Width * 4, Rect: image.Rect(0, 0, info.Width, info.Height)}, nil
+}
+
 // mipSizes lists the size of every mip, largest first (never below 4x4: one block).
 func mipSizes(info Info) [][2]int {
 	sizes := make([][2]int, info.Mips)

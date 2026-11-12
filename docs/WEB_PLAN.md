@@ -34,7 +34,7 @@ web/  Astro estático                       backend/  Go (net/http) en Docker
 | 7 | Docker (estático + distroless, 38,6 MB) + scripts de deploy a Cloud Run (Artifact Registry privado, `--max-instances 2`), gzip en la API, CI — [guía](lessons/07-deploy.md) | 🟡 listo; faltan los pasos de tu cuenta de Google Cloud |
 | 8 | Preview fiel: malla real (`/api/mesh?lod=`, UV f16), textura de la API, shader con los valores del `.vmat` (pulso `-0.2·sin(3t)`, Fresnel, transmisión, contorno), brillo y brasas de los `.vpcf` — [explicación](lessons/08-preview.md) | 🟡 hecho; falta calibrar con una captura del juego |
 | 9 | `web/` en Astro 7: diseño propio art déco (pergamino, latón, turquesa "alma"), taller con encuadre arrastrable, visor en arco, instalación y preguntas; sin assets de Valve, aviso fan-made — [explicación](lessons/09-sitio.md) | ✅ |
-| 10 | Variantes: jaula original con UV recodificadas a f16 y fotos en discos o marcos (requiere prueba en el juego) | |
+| 10 | Variante jaula original (`variant: cage`): foto en los domos ±Z, VPK de un solo archivo; corrección del formato de UV por LOD y diagnóstico `-lodtest` — [explicación](lessons/10-variantes.md) | 🟡 backend listo; falta prueba en el juego y decidir el preview en el sitio |
 
 ## Pendientes / riesgos
 - Las actualizaciones de Deadlock pueden cambiar los archivos base. El sha256 lo detecta, y hay que volver a extraerlos y actualizar la imagen.

@@ -127,3 +127,24 @@ func TestModRejectsBadInput(t *testing.T) {
 		t.Error("garbage photo accepted")
 	}
 }
+
+// The cage variant keeps the original model: the VPK holds only the repainted colour texture.
+func TestCageVariant(t *testing.T) {
+	tpl := loadTemplates(t)
+	input, err := os.ReadFile(filepath.Join(repoRoot, "testdata", "photo_input.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := photo.DefaultParams()
+	p.Variant = "cage"
+	res, err := Mod(tpl, input, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Files) != 1 || len(res.Files[templates.Color.GamePath]) != len(tpl.Color) {
+		t.Fatalf("files: %d, colour %d bytes (original %d)", len(res.Files), len(res.Files[templates.Color.GamePath]), len(tpl.Color))
+	}
+	if _, err := res.VPK(); err != nil {
+		t.Fatal(err)
+	}
+}

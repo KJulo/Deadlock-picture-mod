@@ -23,7 +23,8 @@ const TexSize = 2048
 
 // Params are the user's choices. Zero values are not meaningful: start from DefaultParams().
 type Params struct {
-	Layout      string     `json:"layout"`      // cube6 | twice | wrap
+	Variant     string     `json:"variant"`     // sphere (our sphere) | cage (the original model)
+	Layout      string     `json:"layout"`      // cube6 | twice | wrap (sphere only)
 	Center      [2]float64 `json:"center"`      // photo point (0..1) placed at each sticker's centre
 	Radius      float64    `json:"radius"`      // photo disc radius, fraction of the shorter side
 	Projection  string     `json:"projection"`  // equidistant | ortho
@@ -42,7 +43,7 @@ type Params struct {
 // DefaultParams matches PhotoParams() in the python reference.
 func DefaultParams() Params {
 	return Params{
-		Layout: "cube6", Center: [2]float64{0.5, 0.5}, Radius: 0.5, Projection: "equidistant",
+		Variant: "sphere", Layout: "cube6", Center: [2]float64{0.5, 0.5}, Radius: 0.5, Projection: "equidistant",
 		StickerDeg: 40, RingDeg: 3, RingColor: [3]uint8{235, 235, 235}, BgColor: [3]uint8{24, 120, 140},
 		Back: "mirror", ColorAlpha: 1, Roughness: 0.69, Contrast: 1.05, Saturation: 1.10,
 	}
@@ -52,6 +53,8 @@ func DefaultParams() Params {
 func (p Params) Validate() error {
 	in := func(v, lo, hi float64) bool { return v >= lo && v <= hi && !math.IsNaN(v) }
 	switch {
+	case p.Variant != "sphere" && p.Variant != "cage":
+		return fmt.Errorf("%w: unknown variant %q", ErrBadParams, p.Variant)
 	case p.Layout != "cube6" && p.Layout != "twice" && p.Layout != "wrap":
 		return fmt.Errorf("%w: unknown layout %q", ErrBadParams, p.Layout)
 	case p.Projection != "equidistant" && p.Projection != "ortho":

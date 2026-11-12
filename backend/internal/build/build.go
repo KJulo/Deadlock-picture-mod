@@ -52,7 +52,7 @@ func LoadTemplates(dir string) (*Templates, error) {
 	return &t, nil
 }
 
-// Mod builds the sphere mod from encoded photo bytes (JPEG/PNG/GIF/WebP).
+// Mod builds the mod from encoded photo bytes (JPEG/PNG/GIF/WebP) for p.Variant.
 func Mod(t *Templates, photoData []byte, p photo.Params) (*Result, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
@@ -60,6 +60,9 @@ func Mod(t *Templates, photoData []byte, p photo.Params) (*Result, error) {
 	img, err := photo.Load(photoData, p)
 	if err != nil {
 		return nil, err
+	}
+	if p.Variant == "cage" {
+		return cage(t, img, p)
 	}
 	info, _, err := vtex.ReadInfo(t.Color)
 	if err != nil {
@@ -100,4 +103,19 @@ func ModFromTexture(t *Templates, texture *image.NRGBA, roughness float64) (*Res
 		Texture: texture,
 		LODs:    lods,
 	}, nil
+}
+
+// cage keeps the original model and textures and only paints the photo into the lens domes of
+// the original colour texture, so the VPK contains a single file.
+func cage(t *Templates, img *photo.RGB, p photo.Params) (*Result, error) {
+	texture, err := vtex.DecodeTop(t.Color)
+	if err != nil {
+		return nil, fmt.Errorf("original colour texture: %w", err)
+	}
+	photo.PaintDiscs(texture, img, p, photo.CageDiscs)
+	color, err := vtex.RebuildBC7(t.Color, texture, bc7.Perceptual)
+	if err != nil {
+		return nil, fmt.Errorf("colour texture: %w", err)
+	}
+	return &Result{Files: map[string][]byte{templates.Color.GamePath: color}, Texture: texture}, nil
 }

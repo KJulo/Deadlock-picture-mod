@@ -252,6 +252,10 @@ func (s *Server) texture(w http.ResponseWriter, r *http.Request) {
 		writeError(w, s.classify(r, err))
 		return
 	}
+	if p.Variant != "sphere" {
+		writeError(w, &apiError{http.StatusBadRequest, "no_preview", "texture preview is only available for the sphere variant"})
+		return
+	}
 	release, err := s.acquire(r.Context())
 	if err != nil {
 		writeError(w, s.classify(r, err))

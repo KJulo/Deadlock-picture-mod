@@ -227,3 +227,48 @@ func TestJPEGFastPathMatchesDraw(t *testing.T) {
 		}
 	}
 }
+
+// The photo lands inside each dome, right side up (photo top towards the dome's "up", -X), and
+// texels outside the domes keep the original texture.
+func TestPaintDiscs(t *testing.T) {
+	const size = 512
+	tex := image.NewNRGBA(image.Rect(0, 0, size, size))
+	for i := range tex.Pix {
+		tex.Pix[i] = 77
+	}
+	// photo: top half red, bottom half blue
+	ph := &RGB{W: 100, H: 100, Pix: make([]uint8, 100*100*3)}
+	for y := 0; y < 100; y++ {
+		for x := 0; x < 100; x++ {
+			c := []uint8{0, 0, 255}
+			if y < 50 {
+				c = []uint8{255, 0, 0}
+			}
+			copy(ph.Pix[(y*100+x)*3:], c)
+		}
+	}
+	p := DefaultParams()
+	p.RingDeg = 0
+	PaintDiscs(tex, ph, p, CageDiscs)
+	at := func(u, v float64) []uint8 {
+		i := tex.PixOffset(int(u*size), int(v*size))
+		return tex.Pix[i : i+4]
+	}
+	for _, d := range CageDiscs {
+		// a point halfway towards "up" (-X) must be red, halfway towards "down" (+X) blue
+		up := [2]float64{d.Center[0] - 0.5*d.R*d.A[0][0], d.Center[1] - 0.5*d.R*d.A[0][1]}
+		down := [2]float64{d.Center[0] + 0.5*d.R*d.A[0][0], d.Center[1] + 0.5*d.R*d.A[0][1]}
+		if c := at(up[0], up[1]); c[0] != 255 || c[2] != 0 {
+			t.Errorf("%s: up side is %v, want red", d.Name, c)
+		}
+		if c := at(down[0], down[1]); c[2] != 255 || c[0] != 0 {
+			t.Errorf("%s: down side is %v, want blue", d.Name, c)
+		}
+		if c := at(d.Center[0], d.Center[1]); c[3] != 77 {
+			t.Errorf("%s: alpha changed to %d", d.Name, c[3])
+		}
+	}
+	if c := at(0.9, 0.1); c[0] != 77 || c[1] != 77 {
+		t.Errorf("texel outside the domes changed: %v", c)
+	}
+}

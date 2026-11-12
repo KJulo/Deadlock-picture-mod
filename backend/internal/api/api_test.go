@@ -208,6 +208,9 @@ func TestTexture(t *testing.T) {
 	if rec := do(h, upload(t, "/api/texture?size=99999", testPhoto(t), "")); rec.Code != 400 {
 		t.Errorf("huge size: %d", rec.Code)
 	}
+	if rec := do(h, upload(t, "/api/texture", testPhoto(t), `{"variant":"cage"}`)); rec.Code != 400 || errorCode(t, rec) != "no_preview" {
+		t.Errorf("cage texture: %d %s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestCORS(t *testing.T) {
