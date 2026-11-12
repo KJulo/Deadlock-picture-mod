@@ -2,7 +2,7 @@
 //
 //	GET  /healthz        liveness probe
 //	GET  /api/defaults   default parameters and limits (for the frontend's controls)
-//	GET  /api/mesh       the sphere exactly as the game reads it (?lod=0..3), for the 3D preview
+//	GET  /api/mesh       the model exactly as the game reads it (?lod=0..3&shape=sphere|cube|…)
 //	POST /api/texture    multipart photo (+ params) -> sphere texture as JPEG (?size=256..2048)
 //	POST /api/build      multipart photo (+ params) -> the .vpk to import in Deadlock Mod Manager
 //
@@ -50,8 +50,8 @@ type BuildFunc func(photoData []byte, p photo.Params) (*build.Result, error)
 type Server struct {
 	cfg   Config
 	build BuildFunc
-	slots chan struct{} // semaphore: a full channel means every slot is busy
-	mesh  [][]byte      // /api/mesh response per LOD, computed once
+	slots chan struct{}       // semaphore: a full channel means every slot is busy
+	mesh  map[string][][]byte // /api/mesh response per shape and LOD, computed once
 }
 
 // New creates a server.
@@ -62,13 +62,16 @@ func New(cfg Config, b BuildFunc) (*Server, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	meshes := make([][]byte, len(vmdl.LODs))
-	for lod := range vmdl.LODs {
-		m, err := meshJSON(lod)
-		if err != nil {
-			return nil, err
+	meshes := map[string][][]byte{}
+	for _, name := range mesh.ShapeNames {
+		shape, _ := mesh.ShapeByName(name)
+		for lod := range vmdl.LODs {
+			m, err := meshJSON(lod, name, shape)
+			if err != nil {
+				return nil, err
+			}
+			meshes[name] = append(meshes[name], m)
 		}
-		meshes[lod] = m
 	}
 	return &Server{cfg: cfg, build: b, slots: make(chan struct{}, cfg.MaxConcurrent), mesh: meshes}, nil
 }
@@ -218,23 +221,33 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 func (s *Server) defaults(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"params":           photo.DefaultParams(),
+		"shapes":           mesh.ShapeNames,
 		"max_upload_bytes": s.cfg.MaxUploadBytes,
 		"texture_size":     photo.TexSize,
 	})
 }
 
 func (s *Server) meshHandler(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("shape")
+	if name == "" {
+		name = "sphere"
+	}
+	lods, ok := s.mesh[name]
+	if !ok {
+		writeError(w, &apiError{http.StatusBadRequest, "bad_shape", fmt.Sprintf("shape must be one of %v", mesh.ShapeNames)})
+		return
+	}
 	lod := 0
 	if v := r.URL.Query().Get("lod"); v != "" {
 		n, err := strconv.Atoi(v)
-		if err != nil || n < 0 || n >= len(s.mesh) {
-			writeError(w, &apiError{http.StatusBadRequest, "bad_lod", fmt.Sprintf("lod must be within 0..%d", len(s.mesh)-1)})
+		if err != nil || n < 0 || n >= len(lods) {
+			writeError(w, &apiError{http.StatusBadRequest, "bad_lod", fmt.Sprintf("lod must be within 0..%d", len(lods)-1)})
 			return
 		}
 		lod = n
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	writeBody(w, r, "application/json", s.mesh[lod])
+	writeBody(w, r, "application/json", lods[lod])
 }
 
 func (s *Server) texture(w http.ResponseWriter, r *http.Request) {
@@ -340,26 +353,32 @@ func writeBody(w http.ResponseWriter, r *http.Request, contentType string, data 
 	w.Write(data)
 }
 
-// meshJSON renders one LOD of the sphere as the game decodes it: positions (Source units, Z up),
-// UVs decoded with the format that LOD declares, and only the real (non-padding) triangles.
-func meshJSON(lodIndex int) ([]byte, error) {
+// meshJSON renders one LOD of a shape as the game decodes it: positions (Source units, Z up),
+// unpacked normals, UVs decoded with the format that LOD declares, and only the real
+// (non-padding) triangles.
+func meshJSON(lodIndex int, name string, shape mesh.Shape) ([]byte, error) {
 	lod := vmdl.LODs[lodIndex]
-	vb, idx, grid, err := mesh.BuildBuffers(lod.VertexCount, lod.IndexCount, vmdl.SphereRadius, lod.UV, nil)
+	vb, idx, grid, err := mesh.BuildShapeBuffers(lod.VertexCount, lod.IndexCount, vmdl.SphereRadius, shape, lod.UV, nil)
 	if err != nil {
 		return nil, err
 	}
 	n := grid.Vertices()
-	positions, uvs := make([]float32, 0, n*3), make([]float64, 0, n*2)
+	positions, normals, uvs := make([]float32, 0, n*3), make([]float32, 0, n*3), make([]float64, 0, n*2)
 	for k := 0; k < n; k++ {
 		v := vb[k*mesh.VertexSize:]
 		for c := 0; c < 3; c++ {
 			positions = append(positions, math.Float32frombits(binary.LittleEndian.Uint32(v[4*c:])))
 		}
+		frame := binary.LittleEndian.Uint32(v[16:])
+		nrm := mesh.UnpackNormal(frame>>12&1023, frame>>22&1023)
+		for c := 0; c < 3; c++ {
+			normals = append(normals, float32(math.Round(nrm[c]*1e4)/1e4))
+		}
 		uvs = append(uvs, lod.UV.Decode(binary.LittleEndian.Uint16(v[12:])),
 			lod.UV.Decode(binary.LittleEndian.Uint16(v[14:])))
 	}
 	return json.Marshal(map[string]any{
-		"lod": lodIndex, "uv_format": lod.UV.String(), "grid": []int{grid.NU, grid.NV}, "up": "z", "radius": vmdl.SphereRadius,
-		"positions": positions, "uvs": uvs, "indices": idx[:3*grid.Triangles()],
+		"lod": lodIndex, "shape": name, "uv_format": lod.UV.String(), "grid": []int{grid.NU, grid.NV}, "up": "z", "radius": vmdl.SphereRadius,
+		"positions": positions, "normals": normals, "uvs": uvs, "indices": idx[:3*grid.Triangles()],
 	})
 }

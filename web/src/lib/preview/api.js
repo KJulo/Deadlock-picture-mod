@@ -26,7 +26,8 @@ export function createApi(base) {
 
   return {
     defaults: async () => (await check(await fetch(url('/api/defaults')))).json(),
-    mesh: async (lod = 0) => (await check(await fetch(url(`/api/mesh?lod=${lod}`)))).json(),
+    mesh: async (lod = 0, shape = 'sphere') =>
+      (await check(await fetch(url(`/api/mesh?lod=${lod}&shape=${encodeURIComponent(shape)}`)))).json(),
     texture: async (photo, params, size = 2048, signal) =>
       (await check(await fetch(url(`/api/texture?size=${size}`), { method: 'POST', body: form(photo, params), signal }))).blob(),
     build: async (photo, params) =>

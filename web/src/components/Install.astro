@@ -18,13 +18,12 @@ const numerals = ['I', 'II', 'III'];
     <pre><code>sv_cheats 1
 citadel_give_gold 5000 1
 kill</code></pre>
-    <p class="aside">{t.install.aside}</p>
   </Plate>
 </section>
 <style>
-  .install { padding-block: 32px; }
-  h2 { font-size: clamp(1.8rem, 3vw, 2.4rem); margin-bottom: 22px; }
-  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+  .install { padding-block: 32px; max-width: 760px; }
+  h2 { font-size: clamp(1.8rem, 3vw, 2.4rem); margin-bottom: 20px; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
   .steps li { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: baseline; }
   .steps p { margin: 0; }
   .numeral {
@@ -34,9 +33,8 @@ kill</code></pre>
   }
   code { color: var(--teal-deep); }
   pre {
-    margin: 18px 0 10px; padding: 16px 20px; overflow-x: auto;
+    margin: 16px 0 0; padding: 14px 20px; overflow-x: auto;
     background: var(--night); color: var(--soul); border-left: 3px solid var(--brass);
   }
   pre code { color: inherit; font-size: 0.95rem; line-height: 1.7; }
-  .aside { margin: 0; font-style: italic; color: var(--ink-soft); }
 </style>

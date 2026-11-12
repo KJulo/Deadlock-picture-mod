@@ -50,6 +50,11 @@ func BuildSphereModel(template []byte, radius float64) ([]byte, []LODMesh, error
 // BuildSphereModelRemap is BuildSphereModel with per-LOD UV remapping (nil = none). Used by the
 // LOD diagnostic, which sends each LOD to its own labelled band of the texture.
 func BuildSphereModelRemap(template []byte, radius float64, remap func(lod int) mesh.UVRemap) ([]byte, []LODMesh, error) {
+	return BuildModel(template, radius, nil, remap)
+}
+
+// BuildModel writes any mesh.Shape (nil = the sphere) into every LOD of the model.
+func BuildModel(template []byte, radius float64, shape mesh.Shape, remap func(lod int) mesh.UVRemap) ([]byte, []LODMesh, error) {
 	res, err := resource.Parse(template)
 	if err != nil {
 		return nil, nil, err
@@ -64,7 +69,7 @@ func BuildSphereModelRemap(template []byte, radius float64, remap func(lod int) 
 		if remap != nil {
 			r = remap(n)
 		}
-		vb, idx, grid, err := mesh.BuildBuffers(lod.VertexCount, lod.IndexCount, radius, lod.UV, r)
+		vb, idx, grid, err := mesh.BuildShapeBuffers(lod.VertexCount, lod.IndexCount, radius, shape, lod.UV, r)
 		if err != nil {
 			return nil, nil, err
 		}

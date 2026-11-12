@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"image"
 	"math"
+
+	"github.com/KJulo/Deadlock-picture-mod/backend/internal/mesh"
 )
 
 // TexSize is the size of the game's colour texture.
@@ -24,6 +26,7 @@ const TexSize = 2048
 // Params are the user's choices. Zero values are not meaningful: start from DefaultParams().
 type Params struct {
 	Variant     string     `json:"variant"`     // sphere (our sphere) | cage (the original model)
+	Shape       string     `json:"shape"`       // sphere variant only: one of mesh.ShapeNames
 	Layout      string     `json:"layout"`      // cube6 | twice | wrap (sphere only)
 	Center      [2]float64 `json:"center"`      // photo point (0..1) placed at each sticker's centre
 	Radius      float64    `json:"radius"`      // photo disc radius, fraction of the shorter side
@@ -43,7 +46,7 @@ type Params struct {
 // DefaultParams matches PhotoParams() in the python reference.
 func DefaultParams() Params {
 	return Params{
-		Variant: "sphere", Layout: "cube6", Center: [2]float64{0.5, 0.5}, Radius: 0.5, Projection: "equidistant",
+		Variant: "sphere", Shape: "sphere", Layout: "cube6", Center: [2]float64{0.5, 0.5}, Radius: 0.5, Projection: "equidistant",
 		StickerDeg: 40, RingDeg: 3, RingColor: [3]uint8{235, 235, 235}, BgColor: [3]uint8{24, 120, 140},
 		Back: "mirror", ColorAlpha: 1, Roughness: 0.69, Contrast: 1.05, Saturation: 1.10,
 	}
@@ -55,6 +58,8 @@ func (p Params) Validate() error {
 	switch {
 	case p.Variant != "sphere" && p.Variant != "cage":
 		return fmt.Errorf("%w: unknown variant %q", ErrBadParams, p.Variant)
+	case !validShape(p.Shape):
+		return fmt.Errorf("%w: unknown shape %q", ErrBadParams, p.Shape)
 	case p.Layout != "cube6" && p.Layout != "twice" && p.Layout != "wrap":
 		return fmt.Errorf("%w: unknown layout %q", ErrBadParams, p.Layout)
 	case p.Projection != "equidistant" && p.Projection != "ortho":
@@ -189,4 +194,9 @@ func SphereTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
 		}
 	}
 	return out, nil
+}
+
+func validShape(name string) bool {
+	_, ok := mesh.ShapeByName(name)
+	return ok
 }

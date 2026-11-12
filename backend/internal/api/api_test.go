@@ -147,6 +147,19 @@ func TestMesh(t *testing.T) {
 	if rec := do(h, httptest.NewRequest("GET", "/api/mesh?lod=9", nil)); rec.Code != 400 {
 		t.Errorf("lod 9: %d", rec.Code)
 	}
+	var cube struct {
+		Shape     string
+		Positions []float32
+		Normals   []float32
+	}
+	rec = do(h, httptest.NewRequest("GET", "/api/mesh?shape=cube&lod=1", nil))
+	json.Unmarshal(rec.Body.Bytes(), &cube)
+	if rec.Code != 200 || cube.Shape != "cube" || len(cube.Normals) != len(cube.Positions) || len(cube.Positions) == 0 {
+		t.Errorf("cube: %d %q %d normals", rec.Code, cube.Shape, len(cube.Normals))
+	}
+	if rec := do(h, httptest.NewRequest("GET", "/api/mesh?shape=teapot", nil)); rec.Code != 400 {
+		t.Errorf("teapot: %d", rec.Code)
+	}
 }
 
 func TestBuildReturnsVPKWithParams(t *testing.T) {

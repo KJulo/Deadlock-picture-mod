@@ -15,8 +15,13 @@ export function geometryFromMesh(m) {
   for (let i = 0; i < n; i++) {
     const x = m.positions[i * 3], y = m.positions[i * 3 + 1], z = m.positions[i * 3 + 2];
     pos.set([x, z, -y], i * 3);
-    const len = Math.hypot(x, y, z) || 1;
-    nrm.set([x / len, z / len, -y / len], i * 3);
+    if (m.normals) { // the normals the game unpacks (every shape, not only the sphere)
+      const a = m.normals[i * 3], b = m.normals[i * 3 + 1], c = m.normals[i * 3 + 2];
+      nrm.set([a, c, -b], i * 3);
+    } else {
+      const len = Math.hypot(x, y, z) || 1;
+      nrm.set([x / len, z / len, -y / len], i * 3);
+    }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -24,6 +29,7 @@ export function geometryFromMesh(m) {
   geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(m.uvs), 2));
   geo.setIndex(new THREE.BufferAttribute(new Uint32Array(m.indices), 1));
   geo.computeBoundingSphere();
+  geo.computeBoundingBox();
   return geo;
 }
 
@@ -84,7 +90,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c } = {}) {
     hull = new THREE.Mesh(geo, outline);
     orb.add(hull, body);
     shadow.scale.setScalar(radius * 2.6);
-    shadow.position.y = -radius * 1.02;
+    shadow.position.y = geo.boundingBox.min.y - radius * 0.02;
     controls.target.set(0, 0, 0);
     controls.minDistance = radius * 1.8;
     controls.maxDistance = radius * 12;

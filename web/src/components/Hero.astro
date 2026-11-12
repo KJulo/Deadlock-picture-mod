@@ -1,26 +1,19 @@
 ---
 import { SITE } from '../site.js';
 import { useDict } from '../i18n/ui';
-import Divider from './Divider.astro';
 const t = useDict(Astro.currentLocale);
 ---
 <section class="hero wrap">
-  <p class="caps eyebrow">{t.hero.eyebrow}</p>
   <h1>{SITE.name}</h1>
   <p class="tagline">{t.meta.tagline}</p>
-  <Divider />
-  <p class="lede" set:html={t.hero.lede} />
 </section>
 <style>
-  .hero { text-align: center; padding-block: clamp(8px, 2vw, 20px) clamp(20px, 3vw, 32px); display: grid; gap: 12px; justify-items: center; }
-  .eyebrow { margin: 0; color: var(--brass-bright); }
+  .hero { text-align: center; padding-block: clamp(4px, 1.5vw, 16px) clamp(16px, 2.5vw, 28px); display: grid; gap: 10px; justify-items: center; }
   h1 {
     font-family: var(--font-display); font-weight: 400;
     font-size: clamp(3rem, 8vw, 5.4rem); letter-spacing: 0.05em; line-height: 0.95;
     color: var(--parchment);
     text-shadow: 0 0 40px rgba(41, 255, 201, 0.25);
   }
-  .tagline { margin: 0; font-size: clamp(1.3rem, 2.6vw, 1.8rem); font-style: italic; color: var(--parchment-2); }
-  .lede { margin: 6px 0 0; max-width: 60ch; color: var(--parchment-3); }
-  .lede code { color: var(--soul); }
+  .tagline { margin: 0; font-size: clamp(1.2rem, 2.4vw, 1.6rem); font-style: italic; color: var(--parchment-2); }
 </style>

@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/bc7"
+	"github.com/KJulo/Deadlock-picture-mod/backend/internal/mesh"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/photo"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/templates"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/vmdl"
@@ -72,12 +73,13 @@ func Mod(t *Templates, photoData []byte, p photo.Params) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ModFromTexture(t, texture, p.Roughness)
+	shape, _ := mesh.ShapeByName(p.Shape) // validated above
+	return ModFromTexture(t, texture, shape, p.Roughness)
 }
 
 // ModFromTexture builds the mod from an already composed colour texture.
-func ModFromTexture(t *Templates, texture *image.NRGBA, roughness float64) (*Result, error) {
-	model, lods, err := vmdl.BuildSphereModel(t.Model, vmdl.SphereRadius)
+func ModFromTexture(t *Templates, texture *image.NRGBA, shape mesh.Shape, roughness float64) (*Result, error) {
+	model, lods, err := vmdl.BuildModel(t.Model, vmdl.SphereRadius, shape, nil)
 	if err != nil {
 		return nil, fmt.Errorf("model: %w", err)
 	}

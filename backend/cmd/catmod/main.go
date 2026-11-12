@@ -37,6 +37,7 @@ func main() {
 		out        = flag.String("o", "../build/go/pak01_dir.vpk", "output VPK")
 		tplDir     = flag.String("templates", "../templates", "game files dir (make fetch); $CATMOD_TEMPLATES overrides")
 		variant    = flag.String("variant", d.Variant, "sphere | cage (original model, photo in the lens domes)")
+		shape      = flag.String("shape", d.Shape, "sphere | cube | gem | coin | egg (sphere variant)")
 		layout     = flag.String("layout", d.Layout, "cube6 | twice | wrap")
 		cx         = flag.Float64("cx", d.Center[0], "photo point at the sticker centre, X (0..1)")
 		cy         = flag.Float64("cy", d.Center[1], "photo point at the sticker centre, Y (0..1)")
@@ -67,6 +68,7 @@ func main() {
 	fail := func(err error) { fmt.Fprintln(os.Stderr, "error:", err); os.Exit(1) }
 
 	p := d
+	p.Shape = *shape
 	p.Variant, p.Layout, p.Center, p.Radius, p.Projection = *variant, *layout, [2]float64{*cx, *cy}, *radius, *projection
 	p.StickerDeg, p.RingDeg, p.Back = *stickerDeg, *ringDeg, *back
 	p.ColorAlpha, p.Roughness, p.RotationDeg = *alpha, *rough, *rotate

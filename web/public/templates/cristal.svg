@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="55%" r="65%"><stop offset="0" stop-color="#24402a"/><stop offset="1" stop-color="#0b150d"/></radialGradient>
+    <radialGradient id="glow" cx="50%" cy="60%" r="50%"><stop offset="0" stop-color="#6dff8a" stop-opacity=".45"/><stop offset="1" stop-color="#6dff8a" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="300" r="210" fill="url(#glow)"/>
+  <path d="M60 430q196-50 392 0v82H60Z" fill="#132116"/>
+  <g stroke="#0e3a14" stroke-width="4" stroke-linejoin="round">
+    <!-- left crystal -->
+    <path d="M150 420 118 250 160 196 196 250 190 420Z" fill="#3fbf55"/>
+    <path d="M160 196 196 250 190 420 165 420Z" fill="#2a9440"/>
+    <!-- right crystal -->
+    <path d="M330 420 326 268 362 220 400 270 380 420Z" fill="#3fbf55"/>
+    <path d="M362 220 400 270 380 420 360 420Z" fill="#2a9440"/>
+    <!-- centre crystal -->
+    <path d="M206 430 200 170 256 80 312 170 306 430Z" fill="#6cf27f"/>
+    <path d="M256 80 312 170 306 430 262 430Z" fill="#3fbf55"/>
+    <path d="M200 170 256 80 256 200Z" fill="#b6ffc0"/>
+  </g>
+  <path d="M220 180 220 400" stroke="#eafff0" stroke-width="8" stroke-linecap="round" opacity=".5"/>
+</svg>

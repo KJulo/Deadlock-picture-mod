@@ -242,11 +242,16 @@ type UVRemap func(u, v float64) (float64, float64)
 // largest sphere that fits. The counts must equal the original LOD's so the model metadata stays
 // valid: unused vertices repeat vertex 0, unused indices are 0 (invisible degenerate triangles).
 func BuildBuffers(vertexCount, indexCount int, radius float64, uv UVFormat, remap UVRemap) ([]byte, []uint32, Grid, error) {
+	return BuildShapeBuffers(vertexCount, indexCount, radius, nil, uv, remap)
+}
+
+// BuildShapeBuffers is BuildBuffers for any Shape (nil = the sphere).
+func BuildShapeBuffers(vertexCount, indexCount int, radius float64, shape Shape, uv UVFormat, remap UVRemap) ([]byte, []uint32, Grid, error) {
 	g := SphereGrid(vertexCount, indexCount/3)
 	if g.Vertices() > vertexCount || 3*g.Triangles() > indexCount {
 		return nil, nil, g, fmt.Errorf("mesh: budget %d vertices / %d indices too small", vertexCount, indexCount)
 	}
-	s := UVSphere(radius, g)
+	s := ShapedSphere(radius, g, shape)
 	le := binary.LittleEndian
 	vb := make([]byte, vertexCount*VertexSize)
 	for k := range s.Pos {
