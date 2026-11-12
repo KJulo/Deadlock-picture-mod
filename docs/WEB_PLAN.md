@@ -31,7 +31,7 @@ web/  Astro estático                       backend/  Go (net/http) en Docker
 | 4 | Encoder meshopt (vértices v0 + índices v1) en Go puro, idéntico byte a byte a la librería en C; `vmdl_c` completo con el mismo sha256 que el Python — [explicación](lessons/04-meshopt.md) | ✅ |
 | 5 | Texturas: proyección de la foto (idéntica a `photo.py`), **BC7 vía cgo** (`bc7enc` + parche de alpha), BC4, mips; `build.Mod` + CLI `cmd/catmod` (foto → VPK en ~0,9 s) — [explicación](lessons/05-texturas.md) | ✅ (probado en el juego) |
 | 6 | API HTTP (`cmd/server`): `/api/build`, `/api/texture`, `/api/mesh`, `/api/defaults`, `/healthz`; límites, validación, cola con 503, timeouts, CORS, logs JSON, apagado ordenado; la foto nunca toca el disco — [explicación](lessons/06-api.md) | ✅ |
-| 7 | Docker + deploy a Cloud Run (imagen en Artifact Registry privado) | |
+| 7 | Docker (estático + distroless, 38,6 MB) + scripts de deploy a Cloud Run (Artifact Registry privado, `--max-instances 2`), gzip en la API, CI — [guía](lessons/07-deploy.md) | 🟡 listo; faltan los pasos de tu cuenta de Google Cloud |
 | 8 | Preview fiel: renderizar la malla real con un shader NPR aproximado (pulso turquesa, borde, rim) y calibrar contra capturas del juego | |
 | 9 | `web/` en Astro con diseño propio inspirado en Deadlock: art déco, Nueva York ocultista de los años 20, pergamino, turquesa y latón, tipografías serif. Sin logos ni assets de Valve; aviso de fan-made | |
 | 10 | Variantes: jaula original con UV recodificadas a f16 y fotos en discos o marcos (requiere prueba en el juego) | |

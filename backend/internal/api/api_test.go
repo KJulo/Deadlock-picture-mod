@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"image/jpeg"
 	"io"
@@ -261,5 +262,37 @@ func TestRealBuild(t *testing.T) {
 	rec := do(h, upload(t, "/api/build", testPhoto(t), ""))
 	if rec.Code != 200 || rec.Body.Len() < 10<<20 {
 		t.Fatalf("status %d, %d bytes", rec.Code, rec.Body.Len())
+	}
+}
+
+// Clients that accept gzip get a compressed body that decompresses to the exact same bytes.
+func TestGzip(t *testing.T) {
+	big := bytes.Repeat([]byte("soul container "), 10000)
+	b := func([]byte, photo.Params) (*build.Result, error) {
+		return &build.Result{Files: map[string][]byte{"a/big.vtex_c": big}}, nil
+	}
+	h := newServer(t, b)
+	plain := do(h, upload(t, "/api/build", testPhoto(t), ""))
+	req := upload(t, "/api/build", testPhoto(t), "")
+	req.Header.Set("Accept-Encoding", "br, gzip;q=0.8")
+	zipped := do(h, req)
+	if zipped.Header().Get("Content-Encoding") != "gzip" || plain.Header().Get("Content-Encoding") != "" {
+		t.Fatalf("encodings: %q / %q", zipped.Header().Get("Content-Encoding"), plain.Header().Get("Content-Encoding"))
+	}
+	zr, err := gzip.NewReader(zipped.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(zr)
+	if !bytes.Equal(got, plain.Body.Bytes()) {
+		t.Fatal("gzip body differs from plain body")
+	}
+	t.Logf("%d -> %d bytes", plain.Body.Len(), zipped.Body.Len())
+	for header, want := range map[string]bool{"gzip": true, "deflate, gzip;q=0": false, "": false, "GZIP": true} {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.Header.Set("Accept-Encoding", header)
+		if acceptsGzip(r) != want {
+			t.Errorf("acceptsGzip(%q) != %v", header, want)
+		}
 	}
 }

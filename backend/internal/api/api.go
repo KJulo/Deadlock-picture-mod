@@ -12,6 +12,7 @@ package api
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -23,6 +24,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/build"
@@ -218,9 +220,8 @@ func (s *Server) defaults(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) meshHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Write(s.mesh)
+	writeBody(w, r, "application/json", s.mesh)
 }
 
 func (s *Server) texture(w http.ResponseWriter, r *http.Request) {
@@ -288,11 +289,38 @@ func (s *Server) buildHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, s.classify(r, err))
 		return
 	}
-	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", `attachment; filename="catmod_soul_container.vpk"`)
-	w.Header().Set("Content-Length", strconv.Itoa(len(pak)))
 	w.Header().Set("Cache-Control", "no-store")
-	w.Write(pak)
+	writeBody(w, r, "application/octet-stream", pak)
+}
+
+// acceptsGzip reports whether the client accepts gzip (browsers always do).
+func acceptsGzip(r *http.Request) bool {
+	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
+		token, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+		if strings.EqualFold(strings.TrimSpace(token), "gzip") {
+			return strings.ReplaceAll(params, " ", "") != "q=0"
+		}
+	}
+	return false
+}
+
+// writeBody sends data, gzip-compressed when the client accepts it. The VPK shrinks from 14 MB to
+// well under 1 MB (two of its textures are a constant colour), which saves bandwidth = money.
+func writeBody(w http.ResponseWriter, r *http.Request, contentType string, data []byte) {
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Add("Vary", "Accept-Encoding")
+	if acceptsGzip(r) && len(data) > 1024 {
+		var buf bytes.Buffer
+		zw, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+		zw.Write(data)
+		if zw.Close() == nil {
+			w.Header().Set("Content-Encoding", "gzip")
+			data = buf.Bytes()
+		}
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Write(data)
 }
 
 // meshJSON renders LOD0 of the sphere as the game decodes it: positions (Source units, Z up),

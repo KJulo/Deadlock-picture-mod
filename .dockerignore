@@ -1,0 +1,4 @@
+# Only the backend source and the game files go into the build context.
+*
+!backend/
+!templates/
