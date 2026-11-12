@@ -10,7 +10,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# repo root: templates/ is shared by the Python reference and the Go backend
+ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_DIR = Path(os.environ.get("CATMOD_TEMPLATES", ROOT / "templates"))
 DEFAULT_CITADEL = Path.home() / ".local/share/Steam/steamapps/common/Deadlock/game/citadel"
 

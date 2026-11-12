@@ -1,31 +1,42 @@
 # Plan: sitio web "sube tu foto → esfera → descarga el VPK"
 
 ## Flujo de usuario
-1. El usuario sube una foto.
-2. Ajusta el encuadre (centro, zoom/radio, rotación, parte de atrás) y ve en vivo **un render 3D de la esfera** que puede girar con el mouse.
-3. Presiona "Descargar" y recibe un `.vpk`, que importa como mod local en Deadlock Mod Manager. Ya comprobamos que DMM acepta un `.vpk` suelto.
+1. Entra a `catmod.pages.dev` (o al dominio propio, si lo compramos) y sube una foto.
+2. Elige una variante (esfera con calcomanías, jaula original con fotos en algunas caras, …), ajusta el encuadre y ve un **preview 3D fiel al juego**.
+3. Presiona "Descargar", recibe el `.vpk` y lo importa como mod local en Deadlock Mod Manager.
 
-## Arquitectura recomendada
+## Arquitectura
 
 ```
-navegador (estático)                         backend (Python)
-├─ subir foto + controles                    POST /api/build  (foto + PhotoParams)
-├─ preview 3D con three.js:                    └─ catmod.build.build_mod(...).vpk_bytes()
-│  SphereGeometry + textura generada              -> application/octet-stream (≈14 MB)
-│  en un <canvas> con la MISMA proyección
-│  que catmod/photo.py (portada a JS)
-└─ botón "Descargar" -> POST /api/build
+Cloudflare Pages (gratis)                  Google Cloud Run (free tier, escala a cero)
+web/  Astro estático                       backend/  Go (net/http) en Docker
+├─ subir foto + controles     ──HTTPS──▶   POST /api/preview → textura + malla (para el visor)
+├─ visor three.js: la MISMA malla          POST /api/build   → .vpk
+│  que se genera para el juego,             └─ archivos base del juego dentro de la imagen,
+│  UV decodificadas como f16                   en un registro PRIVADO (nunca en el repo)
+└─ shader aproximado al NPR del juego
 ```
 
-- **Preview en el cliente:** es instantáneo y no le pega al servidor mientras el usuario ajusta. La proyección de `catmod/photo.py` es una fórmula simple por texel y se porta a JS/canvas o a un shader. Para que el preview coincida con el juego, la convención de UV de la esfera (`u = φ/2π`, `v = θ/π`, +Z arriba, frente en +X) debe ser la misma en three.js. Basta con rotar `SphereGeometry` o generar la malla con la misma fórmula.
-- **Build en el servidor:** reutiliza el núcleo tal cual: BC7 con `etcpak`, meshoptimizer y el writer de VPK. Tarda unos 3 segundos por build. Endpoint sugerido: FastAPI, `POST /api/build` (multipart: `photo` + JSON de parámetros), que devuelve el `.vpk`.
-- **Archivos base (`templates/`):** el servidor los necesita. Se extraen una vez desde una instalación del juego con `catmod_cli.py fetch` y se guardan en el servidor, no en el repo público. Después de cada actualización de Deadlock hay que volver a extraerlos y revisar el sha256.
+- **Monorepo, sin Turborepo:** son tres toolchains distintos (Go, Astro/npm, Python). Un `Makefile` en la raíz basta. En GitHub Actions se usan filtros por carpeta (`paths:`) para que cada parte construya solo lo suyo.
+- **`reference/` (Python) es la fuente de verdad.** Cada módulo de Go se valida contra golden files generados por el Python (`make golden` → `testdata/`). En `testdata/` solo van metadatos y salidas sintéticas, nunca contenido de Valve.
+- **URL del usuario:** la del frontend. La de Cloud Run (`https://catmod-api-<n>.<región>.run.app`) solo la usa el frontend por debajo.
 
-## Alternativa: todo en el navegador (sin backend)
-Es posible: meshoptimizer tiene un encoder oficial en JS/WASM, hay encoders BC7 en WASM y el formato VPK es simple. Pero implica portar `resource.py`, `vtex.py` y el writer de VPK a TypeScript, y además repartir los archivos base de Valve a cada visitante. Conviene evaluarla solo si el costo del servidor llega a importar.
+## Etapas (Claude implementa; cada etapa trae una explicación breve en docs/lessons/)
 
-## Pendientes antes del sitio
-- [ ] Validar en el juego: iluminación, el brillo turquesa del material (autoiluminación y transmisión) y que la esfera se vea bien al caer o girar.
-- [ ] Decidir si se neutraliza el brillo turquesa. Habría que parchear `soul_container.vmat_c`, cuyo KV3 binario es más complejo.
-- [ ] Límites de subida (tamaño y formatos), y borrar la foto apenas se genera el VPK.
-- [ ] Preview más fiel opcional: renderizar en three.js con un material emisivo turquesa parecido al del juego.
+| # | Etapa | Estado |
+|---|---|---|
+| 1 | `internal/resource`: contenedor `*_c`, idéntico byte a byte — [explicación](lessons/01-resource.md) | ✅ |
+| 2 | `internal/vpk`: writer de VPK v1 (formato simple: árbol de directorios + datos) | |
+| 3 | `internal/mesh`: esfera, empaquetado de tangentes, UV f16; golden contra `mesh.py` | |
+| 4 | Encoder meshopt (códec de vértices v0 + índices v1) en Go puro; validar decodificando con el Python | |
+| 5 | Texturas: proyección de la foto (`photo.py`) y **BC7 vía cgo** (`bc7enc`), BC4 constante, mips. Si cgo complica, plan B: encoder BC7 propio en Go como ejercicio | |
+| 6 | API HTTP: límites de subida, validación, timeouts y CORS; la foto se descarta apenas se genera el VPK | |
+| 7 | Docker + deploy a Cloud Run (imagen en Artifact Registry privado) | |
+| 8 | Preview fiel: renderizar la malla real con un shader NPR aproximado (pulso turquesa, borde, rim) y calibrar contra capturas del juego | |
+| 9 | `web/` en Astro con diseño propio inspirado en Deadlock: art déco, Nueva York ocultista de los años 20, pergamino, turquesa y latón, tipografías serif. Sin logos ni assets de Valve; aviso de fan-made | |
+| 10 | Variantes: jaula original con UV recodificadas a f16 y fotos en discos o marcos (requiere prueba en el juego) | |
+
+## Pendientes / riesgos
+- Las actualizaciones de Deadlock pueden cambiar los archivos base. El sha256 lo detecta, y hay que volver a extraerlos y actualizar la imagen.
+- Hipótesis por verificar: las UV originales de la jaula también se leen como f16, lo que es necesario para la etapa 10.
+- Cloud Run pide tarjeta para verificar la cuenta. Configurar una alerta de presupuesto en $1 desde el día 1.

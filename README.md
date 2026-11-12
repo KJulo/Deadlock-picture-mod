@@ -7,9 +7,9 @@ Convierte el **soul container** de Deadlock (el objeto que queda cuando mueres c
 ## Uso (Linux)
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python scripts/catmod_cli.py fetch                         # archivos base desde tu Deadlock
-.venv/bin/python scripts/catmod_cli.py build assets/cat.jpg --open   # VPK + preview.png + preview.html (3D, se abre en el navegador)
+python3 -m venv .venv && .venv/bin/pip install -r reference/requirements.txt
+.venv/bin/python reference/scripts/catmod_cli.py fetch                         # archivos base desde tu Deadlock
+.venv/bin/python reference/scripts/catmod_cli.py build assets/cat.jpg --open   # VPK + preview.png + preview.html (3D, se abre en el navegador)
 ```
 
 - **Revisar antes de probar en el juego:** `build/preview.html` es un visor 3D interactivo. Muestra bien el layout y el encuadre; la iluminación es aproximada y no reproduce el shader del juego.
@@ -50,21 +50,19 @@ Detalles de formato descubiertos por ingeniería inversa (verificados contra Sou
 - **`CompressedTangentFrame`:** `bit0` = signo del bitangente, `bits 1-11` = ángulo de la tangente en la base de Frisvad (×2047/2π), `bits 12-21` y `22-31` = normal octaédrica (×1023).
 - **Contenedor de recursos:** offsets relativos y bloques alineados a 16, salvo `RERL`, que va alineado a 4. En `vtex_c`, los mips van después de los bloques, del más chico al más grande.
 
-Estructura:
+Estructura (monorepo):
 
 ```
-catmod/           núcleo reutilizable (lo importaría el backend web)
-  build.py        build_mod(foto, PhotoParams) -> ModResult (.files, .texture, .vpk_bytes(), .preview_mesh())
-  photo.py        proyección foto -> textura de la esfera
-  mesh.py         esfera + empaquetado de normales/tangentes
-  vmdl.py         parche del modelo
-  vtex.py         reconstrucción de texturas BC7/BC4
-  resource.py     contenedor de recursos de Source 2 (parse/serialize idénticos byte a byte)
-  preview.py      renderer por software para previews
-  templates.py    archivos base del juego (fijados por sha256; nunca se suben al repo)
-scripts/          CLI, script para DMM y renderer de .glb
-tests/            pytest
-docs/WEB_PLAN.md  plan del sitio web
+reference/        implementación en Python: la fuente de verdad, probada en el juego
+  catmod/         núcleo (build, photo, mesh, vmdl, vtex, resource, preview, templates)
+  scripts/        CLI, make_golden.py, script para DMM
+  tests/          pytest
+backend/          backend en Go (en construcción, ver docs/lessons/)
+web/              sitio Astro (pendiente)
+testdata/         golden files: lo que genera el Python y contra lo que se compara el Go
+templates/        archivos base del juego (gitignored, `make fetch`)
+docs/             WEB_PLAN.md y lecciones
+Makefile          make setup / fetch / golden / test
 ```
 
 ## Notas

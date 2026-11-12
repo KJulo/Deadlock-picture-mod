@@ -16,8 +16,9 @@ import sys
 import webbrowser
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+REF = Path(__file__).resolve().parent.parent  # reference/
+ROOT = REF.parent                            # repo root (build/ lives here)
+sys.path.insert(0, str(REF))
 
 from catmod import templates  # noqa: E402
 from catmod.build import build_mod  # noqa: E402
