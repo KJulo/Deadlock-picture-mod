@@ -25,6 +25,8 @@ from catmod.vmdl import SPHERE_RADIUS, build_sphere_model  # noqa: E402
 import meshoptimizer as mo  # noqa: E402
 import numpy as np  # noqa: E402
 import vpk  # noqa: E402
+from PIL import Image, ImageDraw, ImageOps  # noqa: E402
+from catmod.photo import PhotoParams, sphere_texture  # noqa: E402
 
 OUT = ROOT / "testdata"
 
@@ -144,6 +146,46 @@ def meshopt_cases(mesh_blob: bytes, mesh_meta: dict):
     return cases
 
 
+PHOTO_SIZE = 256  # texture size for the photo goldens (the real one is 2048)
+PHOTO_CASES = {
+    "cube6_default": PhotoParams(),
+    "cube6_framing": PhotoParams(center=(0.3, 0.6), radius=0.35, sticker_deg=30, ring_deg=0,
+                                 bg_color=(200, 30, 60), contrast=1.0, saturation=1.0),
+    "twice_ortho": PhotoParams(layout="twice", projection="ortho", ring_deg=6,
+                               ring_color=(10, 250, 10)),
+    "wrap_mirror": PhotoParams(layout="wrap"),
+    "wrap_flip": PhotoParams(layout="wrap", back="flip", contrast=1.3, saturation=0.6),
+    "wrap_color_alpha": PhotoParams(layout="wrap", back="color", color_alpha=0.5),
+}
+
+
+def synthetic_photo() -> Image.Image:
+    """Asymmetric test photo: any flip/rotation/offset bug shows up in the comparison."""
+    w, h = 300, 200
+    x = np.linspace(0, 1, w)[None, :]
+    y = np.linspace(0, 1, h)[:, None]
+    rgb = np.stack([np.broadcast_to(x * 255, (h, w)), np.broadcast_to(y * 255, (h, w)),
+                    (np.sin(x * 9) * np.cos(y * 5) * 0.5 + 0.5) * 255], -1).astype(np.uint8)
+    img = Image.fromarray(rgb, "RGB")
+    d = ImageDraw.Draw(img)
+    d.rectangle([20, 20, 90, 60], fill=(255, 255, 0))     # top-left marker
+    d.ellipse([200, 120, 280, 190], fill=(0, 0, 0))        # bottom-right marker
+    d.polygon([(150, 30), (180, 90), (120, 90)], fill=(255, 255, 255))
+    return img
+
+
+def exif_orientations():
+    """PIL's exif_transpose on a tiny 5x3 image with unique pixels, for each orientation 1..8."""
+    base = np.arange(5 * 3 * 3, dtype=np.uint8).reshape(3, 5, 3) * 5
+    out = {}
+    for o in range(1, 9):
+        img = Image.fromarray(base, "RGB")
+        img.getexif()[0x0112] = o
+        t = ImageOps.exif_transpose(img)
+        out[str(o)] = {"w": t.width, "h": t.height, "pix": list(t.tobytes())}
+    return {"input": {"w": 5, "h": 3, "pix": list(base.tobytes())}, "orientations": out}
+
+
 def main():
     OUT.mkdir(exist_ok=True)
     path = OUT / "resource_layout.json"
@@ -160,9 +202,21 @@ def main():
     (OUT / "mesh_buffers.bin.gz").write_bytes(gzip.compress(blob, mtime=0))
     print("wrote", OUT / "mesh_buffers.json", "and", OUT / "mesh_buffers.bin.gz")
     model, _ = build_sphere_model(templates.load(templates.MODEL), SPHERE_RADIUS, "f16")
+    from catmod import vtex
+    ao = vtex.rebuild(templates.load(templates.AO), constant=255)
     (OUT / "model_golden.json").write_text(json.dumps(
-        {"sphere_model_sha256": hashlib.sha256(model).hexdigest()}, indent=2) + "\n")
+        {"sphere_model_sha256": hashlib.sha256(model).hexdigest(),
+         "ao_white_sha256": hashlib.sha256(ao).hexdigest()}, indent=2) + "\n")
     print("wrote", OUT / "model_golden.json")
+    photo = synthetic_photo()
+    photo.save(OUT / "photo_input.png")
+    for name, params in PHOTO_CASES.items():
+        sphere_texture(photo, params, PHOTO_SIZE).save(OUT / f"photo_{name}.png")
+    (OUT / "photo_cases.json").write_text(json.dumps(
+        {name: {k: (list(v) if isinstance(v, tuple) else v) for k, v in vars(p).items()}
+         for name, p in PHOTO_CASES.items()} | {"_size": PHOTO_SIZE}, indent=1) + "\n")
+    (OUT / "exif_orientations.json").write_text(json.dumps(exif_orientations()) + "\n")
+    print("wrote photo goldens")
     cases = meshopt_cases(blob, meta)
     index, data = [], bytearray()
     for c in cases:
