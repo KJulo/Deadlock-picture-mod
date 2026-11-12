@@ -7,6 +7,7 @@ never Valve content, so testdata/ can be committed to the public repo.
   .venv/bin/python reference/scripts/make_golden.py
 """
 import base64
+import gzip
 import hashlib
 import json
 import sys
@@ -19,6 +20,8 @@ sys.path.insert(0, str(REF))
 
 from catmod import templates  # noqa: E402
 from catmod.resource import Resource  # noqa: E402
+from catmod.mesh import build_buffers  # noqa: E402
+from catmod.vmdl import SPHERE_RADIUS  # noqa: E402
 import vpk  # noqa: E402
 
 OUT = ROOT / "testdata"
@@ -68,6 +71,20 @@ def vpk_synthetic():
         return out.read_bytes()
 
 
+def mesh_buffers():
+    """Uncompressed vertex + index buffers of the sphere for every LOD (pure geometry, no game data).
+
+    Returns (meta, blob): blob is vb0 | idx0 | vb1 | idx1 ... with indices as little-endian u32.
+    """
+    meta, blob = {"radius": SPHERE_RADIUS, "uv_encoding": "f16", "lods": []}, bytearray()
+    for _, _, vcount, icount in templates.MODEL_LODS:
+        vb, idx, grid = build_buffers(vcount, icount, SPHERE_RADIUS, "f16")
+        meta["lods"].append({"vertex_count": vcount, "index_count": icount, "grid": list(grid),
+                             "offset": len(blob)})
+        blob += vb.tobytes() + idx.astype("<u4").tobytes()
+    return meta, bytes(blob)
+
+
 def main():
     OUT.mkdir(exist_ok=True)
     path = OUT / "resource_layout.json"
@@ -78,6 +95,11 @@ def main():
                                 indent=2) + "\n")
     (OUT / "vpk_synthetic.vpk").write_bytes(vpk_synthetic())
     print("wrote", files, "and", OUT / "vpk_synthetic.vpk")
+    meta, blob = mesh_buffers()
+    (OUT / "mesh_buffers.json").write_text(json.dumps(meta, indent=2) + "\n")
+    # mtime=0 -> the .gz is byte-identical on every run (no spurious git diffs)
+    (OUT / "mesh_buffers.bin.gz").write_bytes(gzip.compress(blob, mtime=0))
+    print("wrote", OUT / "mesh_buffers.json", "and", OUT / "mesh_buffers.bin.gz")
 
 
 if __name__ == "__main__":

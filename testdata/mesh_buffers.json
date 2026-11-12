@@ -1,0 +1,42 @@
+{
+  "radius": 6.3,
+  "uv_encoding": "f16",
+  "lods": [
+    {
+      "vertex_count": 6084,
+      "index_count": 17997,
+      "grid": [
+        76,
+        38
+      ],
+      "offset": 0
+    },
+    {
+      "vertex_count": 3196,
+      "index_count": 9000,
+      "grid": [
+        54,
+        27
+      ],
+      "offset": 218004
+    },
+    {
+      "vertex_count": 1531,
+      "index_count": 3576,
+      "grid": [
+        34,
+        17
+      ],
+      "offset": 330708
+    },
+    {
+      "vertex_count": 1444,
+      "index_count": 3264,
+      "grid": [
+        32,
+        16
+      ],
+      "offset": 381756
+    }
+  ]
+}
