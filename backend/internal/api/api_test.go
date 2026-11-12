@@ -138,6 +138,15 @@ func TestMesh(t *testing.T) {
 			t.Fatalf("uv %v out of range", uv)
 		}
 	}
+	h := newServer(t, fakeBuild(nil))
+	rec = do(h, httptest.NewRequest("GET", "/api/mesh?lod=3", nil))
+	json.Unmarshal(rec.Body.Bytes(), &m)
+	if rec.Code != 200 || len(m.Positions)/3 != 33*17 {
+		t.Errorf("lod 3: %d, %d vertices", rec.Code, len(m.Positions)/3)
+	}
+	if rec := do(h, httptest.NewRequest("GET", "/api/mesh?lod=9", nil)); rec.Code != 400 {
+		t.Errorf("lod 9: %d", rec.Code)
+	}
 }
 
 func TestBuildReturnsVPKWithParams(t *testing.T) {

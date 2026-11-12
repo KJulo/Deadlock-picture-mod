@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Soul Container Preview (dev)</title>
+<style>
+  :root { --bg: #14181c; --panel: #1d2329; --fg: #e9e4d8; --muted: #9aa3a8; --accent: #29ffc9; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px system-ui, sans-serif; }
+  main { display: grid; grid-template-columns: 1fr 300px; height: 100%; }
+  canvas { width: 100%; height: 100%; display: block; }
+  aside { background: var(--panel); padding: 16px; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+  label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+  label.row { flex-direction: row; align-items: center; gap: 8px; color: var(--fg); }
+  input, select, button { font: inherit; }
+  button { padding: 10px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+  button:disabled { opacity: .4; cursor: default; }
+  #status { min-height: 1.5em; color: var(--muted); }
+  @media (max-width: 720px) { main { grid-template-columns: 1fr; grid-template-rows: 60vh auto; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<main>
+  <canvas id="view"></canvas>
+  <aside>
+    <strong>Preview (dev)</strong>
+    <label>Foto <input type="file" id="photo" accept="image/jpeg,image/png,image/webp,image/gif"></label>
+    <label>Layout
+      <select id="layout"><option value="cube6">cube6 (6 calcomanías)</option><option value="twice">twice</option><option value="wrap">wrap</option></select>
+    </label>
+    <label>Tamaño calcomanía <input type="range" id="sticker_deg" min="20" max="45" step="1" value="40"></label>
+    <label>Encuadre (radio) <input type="range" id="radius" min="0.2" max="1" step="0.05" value="0.5"></label>
+    <label>Color de fondo <input type="color" id="bg_color" value="#18788c"></label>
+    <label>LOD (detalle del modelo)
+      <select id="lod"><option value="0">0 (cerca)</option><option value="1">1</option><option value="2">2</option><option value="3">3 (lejos)</option></select>
+    </label>
+    <label class="row"><input type="checkbox" id="spin" checked> girar</label>
+    <label class="row"><input type="checkbox" id="effects" checked> brillo y brasas</label>
+    <label class="row"><input type="checkbox" id="pulse" checked> pulso de autoiluminación</label>
+    <label class="row"><input type="checkbox" id="outline" checked> contorno</label>
+    <button id="download" disabled>Descargar .vpk</button>
+    <div id="status">Sube una foto.</div>
+  </aside>
+</main>
+<script type="module">
+import { createViewer } from '../src/lib/preview/viewer.js';
+import { createApi } from '../src/lib/preview/api.js';
+
+const api = createApi(new URLSearchParams(location.search).get('api') || 'http://localhost:8080');
+const $ = (id) => document.getElementById(id);
+const status = (t) => { $('status').textContent = t; };
+const viewer = createViewer($('view'), { mesh: await api.mesh(0) });
+window.viewer = viewer; // for calibration from the console: viewer.material.uniforms
+let photo = null, inflight = null, timer = null;
+
+const hex = (v) => [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16));
+const params = () => ({
+  layout: $('layout').value, sticker_deg: +$('sticker_deg').value, radius: +$('radius').value,
+  bg_color: hex($('bg_color').value),
+});
+
+async function refresh() {
+  if (!photo) return;
+  inflight?.abort();
+  inflight = new AbortController();
+  status('Generando textura…');
+  try {
+    await viewer.setTextureBlob(await api.texture(photo, params(), 2048, inflight.signal));
+    status('Listo.');
+  } catch (e) {
+    if (e.name !== 'AbortError') status('Error: ' + e.message);
+  }
+}
+const later = () => { clearTimeout(timer); timer = setTimeout(refresh, 250); };
+
+// dev convenience: ?photo=/assets/cat.jpg loads a photo without clicking (used by the screenshot test)
+const photoUrl = new URLSearchParams(location.search).get('photo');
+if (photoUrl) { photo = await (await fetch(photoUrl)).blob(); $('download').disabled = false; refresh(); }
+
+$('photo').onchange = () => { photo = $('photo').files[0]; $('download').disabled = !photo; refresh(); };
+for (const id of ['layout', 'sticker_deg', 'radius', 'bg_color']) $(id).oninput = later;
+$('lod').onchange = async () => viewer.setMesh(await api.mesh(+$('lod').value));
+for (const id of ['spin', 'effects', 'pulse', 'outline']) $(id).onchange = () => viewer.set({ [id]: $(id).checked });
+$('download').onclick = async () => {
+  status('Armando el .vpk…');
+  try {
+    const blob = await api.build(photo, params());
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'catmod_soul_container.vpk' });
+    a.click();
+    URL.revokeObjectURL(a.href);
+    status(`Descargado (${(blob.size / 1e6).toFixed(1)} MB).`);
+  } catch (e) { status('Error: ' + e.message); }
+};
+</script>
+</body>
+</html>

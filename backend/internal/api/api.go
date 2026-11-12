@@ -2,7 +2,7 @@
 //
 //	GET  /healthz        liveness probe
 //	GET  /api/defaults   default parameters and limits (for the frontend's controls)
-//	GET  /api/mesh       the sphere exactly as the game reads it (LOD0), for the 3D preview
+//	GET  /api/mesh       the sphere exactly as the game reads it (?lod=0..3), for the 3D preview
 //	POST /api/texture    multipart photo (+ params) -> sphere texture as JPEG (?size=256..2048)
 //	POST /api/build      multipart photo (+ params) -> the .vpk to import in Deadlock Mod Manager
 //
@@ -51,7 +51,7 @@ type Server struct {
 	cfg   Config
 	build BuildFunc
 	slots chan struct{} // semaphore: a full channel means every slot is busy
-	mesh  []byte        // /api/mesh response, computed once
+	mesh  [][]byte      // /api/mesh response per LOD, computed once
 }
 
 // New creates a server.
@@ -62,11 +62,15 @@ func New(cfg Config, b BuildFunc) (*Server, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	m, err := meshJSON()
-	if err != nil {
-		return nil, err
+	meshes := make([][]byte, len(vmdl.LODs))
+	for lod := range vmdl.LODs {
+		m, err := meshJSON(lod)
+		if err != nil {
+			return nil, err
+		}
+		meshes[lod] = m
 	}
-	return &Server{cfg: cfg, build: b, slots: make(chan struct{}, cfg.MaxConcurrent), mesh: m}, nil
+	return &Server{cfg: cfg, build: b, slots: make(chan struct{}, cfg.MaxConcurrent), mesh: meshes}, nil
 }
 
 // Handler returns the routes wrapped in the middlewares (outermost first: recover, log, CORS).
@@ -220,8 +224,17 @@ func (s *Server) defaults(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) meshHandler(w http.ResponseWriter, r *http.Request) {
+	lod := 0
+	if v := r.URL.Query().Get("lod"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n >= len(s.mesh) {
+			writeError(w, &apiError{http.StatusBadRequest, "bad_lod", fmt.Sprintf("lod must be within 0..%d", len(s.mesh)-1)})
+			return
+		}
+		lod = n
+	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	writeBody(w, r, "application/json", s.mesh)
+	writeBody(w, r, "application/json", s.mesh[lod])
 }
 
 func (s *Server) texture(w http.ResponseWriter, r *http.Request) {
@@ -323,10 +336,10 @@ func writeBody(w http.ResponseWriter, r *http.Request, contentType string, data 
 	w.Write(data)
 }
 
-// meshJSON renders LOD0 of the sphere as the game decodes it: positions (Source units, Z up),
+// meshJSON renders one LOD of the sphere as the game decodes it: positions (Source units, Z up),
 // UVs decoded from the stored half floats, and only the real (non-padding) triangles.
-func meshJSON() ([]byte, error) {
-	lod := vmdl.LODs[0]
+func meshJSON(lodIndex int) ([]byte, error) {
+	lod := vmdl.LODs[lodIndex]
 	vb, idx, grid, err := mesh.BuildBuffers(lod.VertexCount, lod.IndexCount, vmdl.SphereRadius)
 	if err != nil {
 		return nil, err
@@ -342,7 +355,7 @@ func meshJSON() ([]byte, error) {
 			mesh.HalfToFloat(binary.LittleEndian.Uint16(v[14:])))
 	}
 	return json.Marshal(map[string]any{
-		"lod": 0, "grid": []int{grid.NU, grid.NV}, "up": "z", "radius": vmdl.SphereRadius,
+		"lod": lodIndex, "grid": []int{grid.NU, grid.NV}, "up": "z", "radius": vmdl.SphereRadius,
 		"positions": positions, "uvs": uvs, "indices": idx[:3*grid.Triangles()],
 	})
 }

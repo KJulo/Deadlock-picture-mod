@@ -1,6 +1,6 @@
 PY := .venv/bin/python
 
-.PHONY: help setup fetch golden test test-go test-py vpk dev docker docker-run deploy
+.PHONY: help setup fetch golden test test-go test-py vpk dev preview docker docker-run deploy
 
 help:
 	@echo "make setup    crea .venv con las dependencias del Python de referencia"
@@ -9,6 +9,7 @@ help:
 	@echo "make test     corre los tests de Python y de Go"
 	@echo "make test-go  solo Go (ej: make test-go RUN=TestParse)"
 	@echo "make dev      levanta la API en http://localhost:8080 (ver docs/lessons/06-api.md)"
+	@echo "make preview  API + visor 3D de prueba en http://localhost:4321/web/preview-dev/"
 	@echo "make docker   construye la imagen local (catmod-api:dev)"
 	@echo "make docker-run  la corre en http://localhost:8080 con los límites de Cloud Run"
 	@echo "make deploy   GCP_PROJECT=... [ALLOWED_ORIGINS=...]  sube y despliega en Cloud Run"
@@ -47,3 +48,11 @@ docker-run: docker
 
 deploy:
 	backend/deploy/deploy.sh
+
+# API on :8080 and the dev preview page on :4321 (Ctrl+C stops both)
+preview:
+	@echo "abre http://localhost:4321/web/preview-dev/index.html"
+	@trap 'kill 0' INT TERM EXIT; \
+	  (cd backend && go run ./cmd/server) & \
+	  python3 -m http.server 4321 --bind 127.0.0.1 --directory . & \
+	  wait
