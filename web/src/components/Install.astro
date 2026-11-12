@@ -1,31 +1,24 @@
 ---
 import Plate from './Plate.astro';
+import { useDict } from '../i18n/ui';
+const t = useDict(Astro.currentLocale);
+const numerals = ['I', 'II', 'III'];
 ---
 <section id="instalar" class="install wrap" aria-labelledby="instalar-title">
   <Plate as="div">
-    <h2 id="instalar-title">Instalarlo en Deadlock</h2>
+    <h2 id="instalar-title">{t.install.title}</h2>
     <ol class="steps">
-      <li>
-        <span class="numeral" aria-hidden="true">I</span>
-        <p>Abre <strong>Deadlock Mod Manager</strong> y elige <em>agregar un mod local</em>. Selecciona el
-        <code>.vpk</code> que forjaste.</p>
-      </li>
-      <li>
-        <span class="numeral" aria-hidden="true">II</span>
-        <p>Actívalo. Si tienes otro mod que cambie el contenedor de almas, desactívalo: con dos
-        activos solo se verá uno de ellos.</p>
-      </li>
-      <li>
-        <span class="numeral" aria-hidden="true">III</span>
-        <p>Entra al juego. Para verlo sin esperar a una partida, abre la consola en el modo sandbox o
-        en una partida privada y escribe:</p>
-      </li>
+      {t.install.steps.map((step, i) => (
+        <li>
+          <span class="numeral" aria-hidden="true">{numerals[i]}</span>
+          <p set:html={step} />
+        </li>
+      ))}
     </ol>
     <pre><code>sv_cheats 1
 citadel_give_gold 5000 1
 kill</code></pre>
-    <p class="aside">El primero activa los trucos, el segundo te da almas sin asegurar y el tercero te
-    elimina para que la esfera aparezca.</p>
+    <p class="aside">{t.install.aside}</p>
   </Plate>
 </section>
 <style>

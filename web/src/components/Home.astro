@@ -1,0 +1,20 @@
+---
+// The whole page; src/pages/index.astro (es) and src/pages/en/index.astro render it.
+import Base from '../layouts/Base.astro';
+import SiteHeader from './SiteHeader.astro';
+import Hero from './Hero.astro';
+import Workshop from './Workshop.astro';
+import Install from './Install.astro';
+import Faq from './Faq.astro';
+import SiteFooter from './SiteFooter.astro';
+---
+<Base>
+  <SiteHeader />
+  <main>
+    <Hero />
+    <Workshop />
+    <Install />
+    <Faq />
+  </main>
+  <SiteFooter />
+</Base>

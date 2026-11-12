@@ -5,9 +5,15 @@ export function createApi(base) {
   async function check(res) {
     if (res.ok) return res;
     let message = `HTTP ${res.status}`;
-    try { message = (await res.json()).error.message; } catch { /* not JSON */ }
+    let code;
+    try {
+      const e = (await res.json()).error;
+      message = e.message || message;
+      code = e.code;
+    } catch { /* not JSON */ }
     const err = new Error(message);
     err.status = res.status;
+    err.code = code; // stable error code; the UI translates it (src/i18n/ui.ts → errors)
     throw err;
   }
 
