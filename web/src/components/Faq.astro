@@ -1,16 +1,11 @@
 ---
-const faq = [
-  ['¿Lo ven los demás jugadores?', 'No. El mod cambia archivos de tu instalación, así que solo tú ves tu foto. Para el resto sigue siendo el contenedor de siempre.'],
-  ['¿Guardan mi foto?', 'No. La foto se procesa en memoria para generar la textura y el archivo, y se descarta en cuanto termina. Nunca se escribe en disco ni queda en los registros.'],
-  ['¿Me pueden banear por esto?', 'Es un mod visual local, del mismo tipo que los que distribuye Deadlock Mod Manager. Aun así, los mods no son oficiales: úsalo bajo tu responsabilidad.'],
-  ['¿Y si actualizan el juego?', 'Si Valve cambia el modelo del contenedor, el servidor lo detecta y deja de generar archivos hasta que se adapte. Un mod viejo simplemente deja de aplicarse.'],
-  ['¿Por qué la foto sale seis veces?', 'La esfera cae y rueda en cualquier posición. Con seis sellos siempre hay una foto completa mirando hacia ti. Si prefieres, elige «Anverso y reverso» o «Envoltura».'],
-];
+import { useDict } from '../i18n/ui';
+const t = useDict(Astro.currentLocale);
 ---
 <section id="preguntas" class="faq wrap" aria-labelledby="preguntas-title">
-  <h2 id="preguntas-title">Preguntas</h2>
+  <h2 id="preguntas-title">{t.faq.title}</h2>
   <div class="list">
-    {faq.map(([q, a]) => (
+    {t.faq.items.map(([q, a]) => (
       <details>
         <summary>{q}</summary>
         <p>{a}</p>

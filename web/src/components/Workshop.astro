@@ -1,74 +1,73 @@
 ---
 import Plate from './Plate.astro';
+import { useDict } from '../i18n/ui';
+
+const t = useDict(Astro.currentLocale);
+const w = t.workshop;
+const sw = w.swatches;
 
 // Presets for the colour pickers: [name, hex]
 const backgrounds = [
-  ['Alma', '#18788c'], ['Abismo', '#0f2f3a'], ['Latón', '#8a6a3a'],
-  ['Sangre', '#6e1f1f'], ['Hueso', '#d9cfb8'], ['Ónix', '#151515'],
+  [sw.soul, '#18788c'], [sw.abyss, '#0f2f3a'], [sw.brass, '#8a6a3a'],
+  [sw.blood, '#6e1f1f'], [sw.bone, '#d9cfb8'], [sw.onyx, '#151515'],
 ];
-const rings = [['Hueso', '#ebebeb'], ['Latón', '#c9a45c'], ['Ónix', '#141414'], ['Alma', '#29ffc9']];
-const layouts = [
-  { value: 'cube6', name: 'Seis sellos', note: 'La foto seis veces: se ve entera caiga como caiga.' },
-  { value: 'twice', name: 'Anverso y reverso', note: 'Dos fotos grandes, una por lado.' },
-  { value: 'wrap', name: 'Envoltura', note: 'Una sola foto envolviendo toda la esfera.' },
-];
+const rings = [[sw.bone, '#ebebeb'], [sw.brass, '#c9a45c'], [sw.onyx, '#141414'], [sw.soul, '#29ffc9']];
+const layouts = (['cube6', 'twice', 'wrap'] as const).map((value) => ({ value, ...w.layouts[value] }));
+// Runtime strings for the script below.
+const messages = { status: t.status, errors: t.errors };
 ---
-<section id="taller" class="workshop wrap" aria-labelledby="taller-title">
+<section id="taller" class="workshop wrap" aria-labelledby="taller-title" data-messages={JSON.stringify(messages)}>
   <div class="stage">
     <div class="arch">
-      <canvas id="view" aria-label="Vista previa 3D del contenedor de almas. Arrastra para girarla."></canvas>
+      <canvas id="view" aria-label={w.canvas}></canvas>
       <div class="overlay" id="overlay" hidden></div>
     </div>
-    <div class="viewer-controls" role="group" aria-label="Opciones de la vista previa">
-      <label><input type="checkbox" id="opt-spin" checked /> <span class="caps">Girar</span></label>
-      <label><input type="checkbox" id="opt-effects" checked /> <span class="caps">Brillo</span></label>
-      <label><input type="checkbox" id="opt-pulse" checked /> <span class="caps">Pulso</span></label>
-      <label><input type="checkbox" id="opt-outline" checked /> <span class="caps">Contorno</span></label>
+    <div class="viewer-controls" role="group" aria-label={w.viewerOptions}>
+      <label><input type="checkbox" id="opt-spin" checked /> <span class="caps">{w.spin}</span></label>
+      <label><input type="checkbox" id="opt-effects" checked /> <span class="caps">{w.effects}</span></label>
+      <label><input type="checkbox" id="opt-pulse" checked /> <span class="caps">{w.pulse}</span></label>
+      <label><input type="checkbox" id="opt-outline" checked /> <span class="caps">{w.outline}</span></label>
       <label class="lod">
-        <span class="caps">Detalle</span>
+        <span class="caps">{w.lod}</span>
         <select id="opt-lod">
-          <option value="0">Cerca</option><option value="1">Media</option>
-          <option value="2">Lejos</option><option value="3">Mínimo</option>
+          {w.lods.map((name, i) => <option value={i}>{name}</option>)}
         </select>
       </label>
     </div>
-    <p class="note">
-      Misma malla y misma textura que recibe el juego. La luz es una aproximación: en partida depende
-      del mapa.
-    </p>
+    <p class="note">{w.note}</p>
   </div>
 
   <Plate class="bench" labelledby="taller-title">
-    <h2 id="taller-title" class="visually-hidden">Taller</h2>
+    <h2 id="taller-title" class="visually-hidden">{w.title}</h2>
     <ol class="acts">
       <li class="act">
-        <h3><span class="numeral" aria-hidden="true">I</span> La foto</h3>
+        <h3><span class="numeral" aria-hidden="true">I</span> {w.photo}</h3>
         <label class="drop" id="drop">
           <input type="file" id="photo" accept="image/jpeg,image/png,image/webp,image/gif" class="visually-hidden" />
           <span class="drop-text">
-            <strong>Elige una foto</strong> o arrástrala aquí
-            <span class="caps small">JPEG · PNG · WebP · hasta <span id="max-mb">15</span> MB</span>
+            <Fragment set:html={w.dropHtml} />
+            <span class="caps small">{w.formats} <span id="max-mb">15</span> MB</span>
           </span>
         </label>
-        <button type="button" class="link" id="sample">o prueba con el gato de ejemplo</button>
+        <button type="button" class="link" id="sample">{w.sample}</button>
 
         <div class="framing" id="framing" hidden>
           <div class="thumb" id="thumb">
-            <img id="thumb-img" alt="Tu foto. Arrastra el círculo para elegir qué parte queda en el centro." />
+            <img id="thumb-img" alt={w.thumbAlt} />
             <div class="disc" id="disc" aria-hidden="true"></div>
           </div>
-          <p class="hint">Arrastra el círculo: eso es lo que queda en cada sello.</p>
+          <p class="hint">{w.hint}</p>
           <label class="range">
-            <span class="caps">Encuadre</span>
+            <span class="caps">{w.framing}</span>
             <input type="range" id="radius" min="0.2" max="1" step="0.02" value="0.5" />
           </label>
         </div>
       </li>
 
       <li class="act">
-        <h3><span class="numeral" aria-hidden="true">II</span> La forma</h3>
+        <h3><span class="numeral" aria-hidden="true">II</span> {w.shape}</h3>
         <fieldset class="layouts">
-          <legend class="visually-hidden">Distribución de la foto</legend>
+          <legend class="visually-hidden">{w.layoutLegend}</legend>
           {layouts.map((l, i) => (
             <label class="layout">
               <input type="radio" name="layout" value={l.value} checked={i === 0} />
@@ -85,33 +84,33 @@ const layouts = [
         </fieldset>
         <div class="sticker-opts" id="sticker-opts">
           <label class="range">
-            <span class="caps">Tamaño del sello</span>
+            <span class="caps">{w.stickerSize}</span>
             <input type="range" id="sticker_deg" min="20" max="45" step="1" value="40" />
           </label>
           <label class="range">
-            <span class="caps">Grosor del aro</span>
+            <span class="caps">{w.ringWidth}</span>
             <input type="range" id="ring_deg" min="0" max="8" step="0.5" value="3" />
           </label>
         </div>
       </li>
 
       <li class="act">
-        <h3><span class="numeral" aria-hidden="true">III</span> Los colores</h3>
+        <h3><span class="numeral" aria-hidden="true">III</span> {w.colors}</h3>
         <fieldset class="swatches">
-          <legend class="caps">Fondo</legend>
+          <legend class="caps">{w.background}</legend>
           {backgrounds.map(([name, hex], i) => (
             <label class="swatch" title={name}>
               <input type="radio" name="bg" value={hex} checked={i === 0} />
               <span style={`--c:${hex}`}></span><span class="visually-hidden">{name}</span>
             </label>
           ))}
-          <label class="swatch custom" title="Otro color">
+          <label class="swatch custom" title={w.otherColor}>
             <input type="color" id="bg-custom" value="#18788c" />
-            <span class="visually-hidden">Otro color de fondo</span>
+            <span class="visually-hidden">{w.otherBackground}</span>
           </label>
         </fieldset>
         <fieldset class="swatches" id="ring-colors">
-          <legend class="caps">Aro</legend>
+          <legend class="caps">{w.ring}</legend>
           {rings.map(([name, hex], i) => (
             <label class="swatch" title={name}>
               <input type="radio" name="ring" value={hex} checked={i === 0} />
@@ -122,11 +121,11 @@ const layouts = [
       </li>
 
       <li class="act">
-        <h3><span class="numeral" aria-hidden="true">IV</span> Forjar</h3>
+        <h3><span class="numeral" aria-hidden="true">IV</span> {w.forgeTitle}</h3>
         <button type="button" class="forge" id="forge" disabled>
-          <span>Forjar el .vpk</span>
+          <span>{w.forgeButton}</span>
         </button>
-        <p class="status" id="status" role="status" aria-live="polite">Primero, una foto.</p>
+        <p class="status" id="status" role="status" aria-live="polite">{t.status.needPhoto}</p>
       </li>
     </ol>
   </Plate>
@@ -134,6 +133,14 @@ const layouts = [
 
 <script>
   import { createApi } from '../lib/preview/api.js';
+
+  // Localized strings, rendered into the section by the server (see `messages` above).
+  const M: { status: Record<string, string>; errors: Record<string, string> } =
+    JSON.parse(document.getElementById('taller')!.dataset.messages!);
+  const msg = (key: string, vars: Record<string, string | number> = {}) =>
+    M.status[key].replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+  // Backend errors carry a stable code; show our translation when we have one.
+  const errorText = (e: any) => (e.code && M.errors[e.code]) || e.message;
 
   const api = createApi(import.meta.env.PUBLIC_API_BASE || 'http://localhost:8080');
   const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -167,8 +174,8 @@ const layouts = [
     const sample = await fetch('/sample-texture.jpg');
     if (sample.ok) await viewer.setTextureBlob(await sample.blob());
   } catch {
-    overlay('El taller está cerrado por ahora (no responde el servidor). Vuelve en un rato.');
-    status('Sin conexión con el servidor.', true);
+    overlay(msg('offline'));
+    status(msg('noServer'), true);
   }
   }
   init();
@@ -203,12 +210,12 @@ const layouts = [
     if (!photo || !viewer) return;
     inflight?.abort();
     inflight = new AbortController();
-    status('Grabando los sellos…');
+    status(msg('rendering'));
     try {
       await viewer.setTextureBlob(await api.texture(photo, params(), 2048, inflight.signal));
-      status('Listo. Cuando te guste, fórjalo.');
+      status(msg('ready'));
     } catch (e: any) {
-      if (e.name !== 'AbortError') status(e.message, true);
+      if (e.name !== 'AbortError') status(errorText(e), true);
     }
   }
   const later = () => { clearTimeout(timer); timer = window.setTimeout(refresh, 250); };
@@ -246,7 +253,7 @@ const layouts = [
 
   function usePhoto(file: Blob) {
     if (file.size > maxBytes) {
-      status(`La foto pesa ${(file.size / 1e6).toFixed(1)} MB; el máximo es ${Math.round(maxBytes / (1 << 20))} MB.`, true);
+      status(msg('tooBig', { size: (file.size / 1e6).toFixed(1), max: Math.round(maxBytes / (1 << 20)) }), true);
       return;
     }
     photo = file;
@@ -293,7 +300,7 @@ const layouts = [
     if (!photo) return;
     const button = $<HTMLButtonElement>('forge');
     button.disabled = true;
-    status('Forjando…');
+    status(msg('forging'));
     try {
       const blob = await api.build(photo, params());
       const a = Object.assign(document.createElement('a'), {
@@ -301,9 +308,9 @@ const layouts = [
       });
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-      status('Hecho. Ahora instálalo en Deadlock Mod Manager (abajo te explico cómo).');
+      status(msg('done'));
     } catch (e: any) {
-      status(e.message, true);
+      status(errorText(e), true);
     } finally {
       button.disabled = false;
     }

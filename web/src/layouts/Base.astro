@@ -7,21 +7,31 @@ import '@fontsource/josefin-sans/400.css';
 import '@fontsource/josefin-sans/600.css';
 import '../styles/global.css';
 import { SITE } from '../site.js';
+import { languages, defaultLang, useDict, fmt, homeUrl, type Lang } from '../i18n/ui';
 
 interface Props { title?: string }
-const { title = `${SITE.name} — tu foto en el contenedor de almas` } = Astro.props;
+const t = useDict(Astro.currentLocale);
+const lang = Astro.currentLocale ?? defaultLang;
+const { title = fmt(t.meta.title, { name: SITE.name }) } = Astro.props;
 ---
 <!doctype html>
-<html lang="es">
+<html lang={lang}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
-    <meta name="description" content={SITE.description} />
+    <meta name="description" content={t.meta.description} />
     <meta name="theme-color" content="#0e1719" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {Astro.site && /* hreflang needs absolute URLs: set `site` in astro.config.mjs to enable */ (
+      [...(Object.keys(languages) as Lang[]), 'x-default'].map((l) => (
+        <link rel="alternate" hreflang={l}
+              href={new URL(homeUrl(l === 'x-default' ? defaultLang : (l as Lang)), Astro.site).href} />
+      ))
+    )}
     <meta property="og:title" content={title} />
-    <meta property="og:description" content={SITE.description} />
+    <meta property="og:description" content={t.meta.description} />
+    <meta property="og:locale" content={lang === 'en' ? 'en_US' : 'es_ES'} />
   </head>
   <body>
     <slot />
