@@ -6,9 +6,11 @@ never Valve content, so testdata/ can be committed to the public repo.
 
   .venv/bin/python reference/scripts/make_golden.py
 """
+import base64
 import hashlib
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 REF = Path(__file__).resolve().parent.parent
@@ -17,6 +19,7 @@ sys.path.insert(0, str(REF))
 
 from catmod import templates  # noqa: E402
 from catmod.resource import Resource  # noqa: E402
+import vpk  # noqa: E402
 
 OUT = ROOT / "testdata"
 
@@ -37,11 +40,44 @@ def resource_layout():
     return files
 
 
+# Synthetic files covering the VPK tree cases: several extensions, nested and shared directories,
+# root files, dots in names, an empty file and binary data.
+VPK_FILES = {
+    "models/props_gameplay/soul_container/soul_container.vmdl_c": b"model\x00\x01\x02" * 50,
+    "models/props_gameplay/soul_container/materials/a_color_png_1.vtex_c": bytes(range(256)) * 3,
+    "models/props_gameplay/soul_container/materials/b_rough_png_2.vtex_c": b"",
+    "models/other/x.vtex_c": b"x",
+    "readme.txt": "hola gato \u00f1".encode(),
+    "materials/my.file.name.vmat_c": b"dots",
+}
+
+
+def vpk_synthetic():
+    """VPK written by the python library, with the tree sorted the way the Go writer sorts it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "root"
+        for p, data in VPK_FILES.items():
+            f = root / p
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(data)
+        pak = vpk.new(str(root))
+        pak.tree = {ext: {d: sorted(names) for d, names in sorted(dirs.items())}
+                    for ext, dirs in sorted(pak.tree.items())}
+        out = Path(tmp) / "out.vpk"
+        pak.save(str(out))
+        return out.read_bytes()
+
+
 def main():
     OUT.mkdir(exist_ok=True)
     path = OUT / "resource_layout.json"
     path.write_text(json.dumps(resource_layout(), indent=2) + "\n")
     print("wrote", path)
+    files = OUT / "vpk_synthetic_files.json"
+    files.write_text(json.dumps({p: base64.b64encode(d).decode() for p, d in VPK_FILES.items()},
+                                indent=2) + "\n")
+    (OUT / "vpk_synthetic.vpk").write_bytes(vpk_synthetic())
+    print("wrote", files, "and", OUT / "vpk_synthetic.vpk")
 
 
 if __name__ == "__main__":

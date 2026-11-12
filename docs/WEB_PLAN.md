@@ -26,7 +26,7 @@ web/  Astro estático                       backend/  Go (net/http) en Docker
 | # | Etapa | Estado |
 |---|---|---|
 | 1 | `internal/resource`: contenedor `*_c`, idéntico byte a byte — [explicación](lessons/01-resource.md) | ✅ |
-| 2 | `internal/vpk`: writer de VPK v1 (formato simple: árbol de directorios + datos) | |
+| 2 | `internal/vpk`: writer de VPK v2, idéntico byte a byte a la librería de Python — [explicación](lessons/02-vpk.md) | ✅ |
 | 3 | `internal/mesh`: esfera, empaquetado de tangentes, UV f16; golden contra `mesh.py` | |
 | 4 | Encoder meshopt (códec de vértices v0 + índices v1) en Go puro; validar decodificando con el Python | |
 | 5 | Texturas: proyección de la foto (`photo.py`) y **BC7 vía cgo** (`bc7enc`), BC4 constante, mips. Si cgo complica, plan B: encoder BC7 propio en Go como ejercicio | |
