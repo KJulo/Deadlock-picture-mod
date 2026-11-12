@@ -28,7 +28,7 @@ web/  Astro estático                       backend/  Go (net/http) en Docker
 | 1 | `internal/resource`: contenedor `*_c`, idéntico byte a byte — [explicación](lessons/01-resource.md) | ✅ |
 | 2 | `internal/vpk`: writer de VPK v2, idéntico byte a byte a la librería de Python — [explicación](lessons/02-vpk.md) | ✅ |
 | 3 | `internal/mesh`: esfera, empaquetado de tangentes, UV f16; idéntica byte a byte a `mesh.py` — [explicación](lessons/03-mesh.md) | ✅ |
-| 4 | Encoder meshopt (códec de vértices v0 + índices v1) en Go puro; validar decodificando con el Python | |
+| 4 | Encoder meshopt (vértices v0 + índices v1) en Go puro, idéntico byte a byte a la librería en C; `vmdl_c` completo con el mismo sha256 que el Python — [explicación](lessons/04-meshopt.md) | ✅ |
 | 5 | Texturas: proyección de la foto (`photo.py`) y **BC7 vía cgo** (`bc7enc`), BC4 constante, mips. Si cgo complica, plan B: encoder BC7 propio en Go como ejercicio | |
 | 6 | API HTTP: límites de subida, validación, timeouts y CORS; la foto se descarta apenas se genera el VPK | |
 | 7 | Docker + deploy a Cloud Run (imagen en Artifact Registry privado) | |

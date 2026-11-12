@@ -1,0 +1,197 @@
+[
+ {
+  "name": "sphere_lod0_vertices",
+  "kind": "vertex",
+  "vertex_size": 24,
+  "input": [
+   0,
+   146016
+  ],
+  "output": [
+   146016,
+   36096
+  ]
+ },
+ {
+  "name": "sphere_lod0_indices",
+  "kind": "index",
+  "vertex_count": 6084,
+  "input": [
+   182112,
+   71988
+  ],
+  "output": [
+   254100,
+   26270
+  ]
+ },
+ {
+  "name": "sphere_lod1_vertices",
+  "kind": "vertex",
+  "vertex_size": 24,
+  "input": [
+   280370,
+   76704
+  ],
+  "output": [
+   357074,
+   19101
+  ]
+ },
+ {
+  "name": "sphere_lod1_indices",
+  "kind": "index",
+  "vertex_count": 3196,
+  "input": [
+   376175,
+   36000
+  ],
+  "output": [
+   412175,
+   10368
+  ]
+ },
+ {
+  "name": "sphere_lod2_vertices",
+  "kind": "vertex",
+  "vertex_size": 24,
+  "input": [
+   422543,
+   36744
+  ],
+  "output": [
+   459287,
+   8206
+  ]
+ },
+ {
+  "name": "sphere_lod2_indices",
+  "kind": "index",
+  "vertex_count": 1531,
+  "input": [
+   467493,
+   14304
+  ],
+  "output": [
+   481797,
+   4122
+  ]
+ },
+ {
+  "name": "sphere_lod3_vertices",
+  "kind": "vertex",
+  "vertex_size": 24,
+  "input": [
+   485919,
+   34656
+  ],
+  "output": [
+   520575,
+   7335
+  ]
+ },
+ {
+  "name": "sphere_lod3_indices",
+  "kind": "index",
+  "vertex_count": 1444,
+  "input": [
+   527910,
+   13056
+  ],
+  "output": [
+   540966,
+   3717
+  ]
+ },
+ {
+  "name": "vertices_mixed_1000x24",
+  "kind": "vertex",
+  "vertex_size": 24,
+  "input": [
+   544683,
+   24000
+  ],
+  "output": [
+   568683,
+   18623
+  ]
+ },
+ {
+  "name": "vertices_noise_77x8",
+  "kind": "vertex",
+  "vertex_size": 8,
+  "input": [
+   587306,
+   616
+  ],
+  "output": [
+   587922,
+   689
+  ]
+ },
+ {
+  "name": "vertices_zero_300x4",
+  "kind": "vertex",
+  "vertex_size": 4,
+  "input": [
+   588611,
+   1200
+  ],
+  "output": [
+   589811,
+   53
+  ]
+ },
+ {
+  "name": "vertices_one_1x24",
+  "kind": "vertex",
+  "vertex_size": 24,
+  "input": [
+   589864,
+   24
+  ],
+  "output": [
+   589888,
+   57
+  ]
+ },
+ {
+  "name": "grid_ordered",
+  "kind": "index",
+  "vertex_count": 441,
+  "input": [
+   589945,
+   9600
+  ],
+  "output": [
+   599545,
+   857
+  ]
+ },
+ {
+  "name": "grid_shuffled",
+  "kind": "index",
+  "vertex_count": 441,
+  "input": [
+   600402,
+   9600
+  ],
+  "output": [
+   610002,
+   4514
+  ]
+ },
+ {
+  "name": "random_large_indices",
+  "kind": "index",
+  "vertex_count": 100000,
+  "input": [
+   614516,
+   3696
+  ],
+  "output": [
+   618212,
+   3216
+  ]
+ }
+]
