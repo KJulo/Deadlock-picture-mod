@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/KJulo/Deadlock-picture-mod/backend/internal/mesh"
 )
 
 const testdata = "../../../testdata"
@@ -270,5 +272,28 @@ func TestPaintDiscs(t *testing.T) {
 	}
 	if c := at(0.9, 0.1); c[0] != 77 || c[1] != 77 {
 		t.Errorf("texel outside the domes changed: %v", c)
+	}
+}
+
+func TestMedallionTexture(t *testing.T) {
+	img := &RGB{W: 4, H: 4, Pix: make([]uint8, 4*4*3)}
+	for i := range img.Pix {
+		img.Pix[i] = 200 // photo: light grey
+	}
+	p := DefaultParams()
+	p.Shape, p.BgColor, p.RingDeg = mesh.MedallionsShape, [3]uint8{1, 2, 3}, 0
+	tex, err := Texture(img, p, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// every disc centre shows the photo; the unused bottom third is background
+	for k := range mesh.MedallionAxes {
+		u, v := mesh.MedallionUV(k, 0, 0)
+		if c := tex.NRGBAAt(int(u*256), int(v*256)); c.R != 200 {
+			t.Errorf("cap %d centre: %v", k, c)
+		}
+	}
+	if c := tex.NRGBAAt(128, 250); c.R != 1 || c.G != 2 || c.B != 3 {
+		t.Errorf("unused area: %v", c)
 	}
 }

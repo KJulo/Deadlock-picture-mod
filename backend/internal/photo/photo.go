@@ -26,7 +26,7 @@ const TexSize = 2048
 // Params are the user's choices. Zero values are not meaningful: start from DefaultParams().
 type Params struct {
 	Variant     string     `json:"variant"`     // sphere (our sphere) | cage (the original model)
-	Shape       string     `json:"shape"`       // sphere variant only: one of mesh.ShapeNames
+	Shape       string     `json:"shape"`       // sphere variant only: mesh.ShapeNames or "medallions"
 	Layout      string     `json:"layout"`      // cube6 | twice | wrap (sphere only)
 	Center      [2]float64 `json:"center"`      // photo point (0..1) placed at each sticker's centre
 	Radius      float64    `json:"radius"`      // photo disc radius, fraction of the shorter side
@@ -146,9 +146,8 @@ func SphereTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
 	cx, cy, r := p.Center[0]*w, p.Center[1]*h, p.Radius*math.Min(w, h)
 	alpha := uint8(math.RoundToEven(p.ColorAlpha * 255))
 	out := image.NewNRGBA(image.Rect(0, 0, size, size))
-	R, ring := p.StickerDeg*math.Pi/180, p.RingDeg*math.Pi/180
-	stickers := layouts[p.Layout]
 	front := sticker{vec{1, 0, 0}, vec{0, 0, 1}}
+	texel := stickerTexel(photo, p)
 
 	for row := 0; row < size; row++ {
 		th := (float64(row) + 0.5) / float64(size) * math.Pi
@@ -169,22 +168,7 @@ func SphereTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
 					px = sampleBilinear(photo, cx+sx*r, cy-sy*r)
 				}
 			} else {
-				// the nearest sticker centre owns this texel (first one wins a tie, like argmax)
-				best, bestCos := 0, math.Inf(-1)
-				for i, s := range stickers {
-					if c := d.dot(s.centre); c > bestCos {
-						best, bestCos = i, c
-					}
-				}
-				sx, sy, ang := discCoords(d, stickers[best], R, p.Projection)
-				switch {
-				case ang <= R:
-					px = sampleBilinear(photo, cx+sx*r, cy-sy*r)
-				case ang <= R+ring:
-					px = [3]float64{float64(p.RingColor[0]), float64(p.RingColor[1]), float64(p.RingColor[2])}
-				default:
-					px = [3]float64{float64(p.BgColor[0]), float64(p.BgColor[1]), float64(p.BgColor[2])}
-				}
+				px = texel(d)
 			}
 			i := out.PixOffset(col, row)
 			for k := 0; k < 3; k++ {
@@ -196,7 +180,87 @@ func SphereTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
 	return out, nil
 }
 
+// stickerTexel returns the colour of direction d for the sticker layouts (cube6, twice): the
+// photo inside the nearest sticker, then its ring, then the background.
+func stickerTexel(photo *RGB, p Params) func(d vec) [3]float64 {
+	w, h := float64(photo.W), float64(photo.H)
+	cx, cy, r := p.Center[0]*w, p.Center[1]*h, p.Radius*math.Min(w, h)
+	R, ring := p.StickerDeg*math.Pi/180, p.RingDeg*math.Pi/180
+	stickers := layouts[p.Layout]
+	return func(d vec) [3]float64 {
+		// the nearest sticker centre owns this texel (first one wins a tie, like argmax)
+		best, bestCos := 0, math.Inf(-1)
+		for i, s := range stickers {
+			if c := d.dot(s.centre); c > bestCos {
+				best, bestCos = i, c
+			}
+		}
+		sx, sy, ang := discCoords(d, stickers[best], R, p.Projection)
+		switch {
+		case ang <= R:
+			return sampleBilinear(photo, cx+sx*r, cy-sy*r)
+		case ang <= R+ring:
+			return [3]float64{float64(p.RingColor[0]), float64(p.RingColor[1]), float64(p.RingColor[2])}
+		default:
+			return [3]float64{float64(p.BgColor[0]), float64(p.BgColor[1]), float64(p.BgColor[2])}
+		}
+	}
+}
+
 func validShape(name string) bool {
 	_, ok := mesh.ShapeByName(name)
-	return ok
+	return ok || name == mesh.MedallionsShape
+}
+
+// MedallionRad is the angular radius of each medallion: the seal plus its ring, capped so
+// neighbouring medallions never overlap.
+func (p Params) MedallionRad() float64 {
+	return math.Min((p.StickerDeg+p.RingDeg)*math.Pi/180, mesh.MaxMedallionRad)
+}
+
+// Texture renders the colour texture the chosen shape expects: the equirectangular sphere
+// texture, or the medallion atlas.
+func Texture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
+	if p.Shape == mesh.MedallionsShape {
+		return MedallionTexture(photo, p, size)
+	}
+	return SphereTexture(photo, p, size)
+}
+
+// MedallionTexture renders the six seals into the atlas discs of mesh.MedallionUV. Each texel
+// is coloured exactly like the sphere texture colours that direction (always with the cube6
+// layout), so seals look the same as on the sphere. Texels just outside a disc repeat its edge
+// colour, so filtering and mipmaps do not bleed the background into the ring.
+func MedallionTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
+	if err := p.Validate(); err != nil {
+		return nil, err
+	}
+	p.Layout = "cube6"
+	texel := stickerTexel(photo, p)
+	capRad := p.MedallionRad()
+	alpha := uint8(math.RoundToEven(p.ColorAlpha * 255))
+	bg := [3]float64{float64(p.BgColor[0]), float64(p.BgColor[1]), float64(p.BgColor[2])}
+	out := image.NewNRGBA(image.Rect(0, 0, size, size))
+	for row := 0; row < size; row++ {
+		v := (float64(row) + 0.5) / float64(size)
+		for col := 0; col < size; col++ {
+			u := (float64(col) + 0.5) / float64(size)
+			px := bg
+			if k, x, y, ok := mesh.MedallionCell(u, v); ok {
+				if rho := math.Hypot(x, y); rho <= 1.1 {
+					if rho > 1 {
+						x, y = x/rho, y/rho
+					}
+					d := mesh.MedallionDir(k, x, y, capRad)
+					px = texel(vec(d))
+				}
+			}
+			i := out.PixOffset(col, row)
+			for c := 0; c < 3; c++ {
+				out.Pix[i+c] = uint8(math.Max(0, math.Min(255, px[c])))
+			}
+			out.Pix[i+3] = alpha
+		}
+	}
+	return out, nil
 }

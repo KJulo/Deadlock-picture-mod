@@ -20,6 +20,7 @@ const shapeIcons = {
   gem: '<path d="M24 4 42 24 24 44 6 24Z" stroke-linejoin="round"/>',
   coin: '<rect x="5" y="16" width="38" height="16" rx="5"/>',
   egg: '<path d="M24 4c10 0 16 14 16 24a16 16 0 0 1-32 0C8 18 14 4 24 4Z"/>',
+  medallions: '<circle cx="24" cy="24" r="7"/><circle cx="9" cy="24" r="5"/><circle cx="39" cy="24" r="5"/><circle cx="24" cy="9" r="5"/><circle cx="24" cy="39" r="5"/>',
 } as const;
 const shapes = (Object.keys(shapeIcons) as (keyof typeof shapeIcons)[])
   .map((value) => ({ value, name: w.shapes[value], icon: shapeIcons[value] }));
@@ -101,7 +102,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
             </label>
           ))}
         </fieldset>
-        <fieldset class="layouts">
+        <fieldset class="layouts" id="layouts">
           <legend class="caps">{w.layoutLegend}</legend>
           {layouts.map((l, i) => (
             <label class="layout" title={l.note}>
@@ -205,8 +206,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     $('max-mb').textContent = String(Math.round(maxBytes / (1 << 20)));
     viewer = createViewer($<HTMLCanvasElement>('view'), { mesh, background: 0x0e1719 });
     if (reducedMotion) { viewer.set({ spin: false }); $<HTMLInputElement>('opt-spin').checked = false; }
-    const sample = await fetch('/sample-texture.jpg');
-    if (sample.ok) await viewer.setTextureBlob(await sample.blob());
+    await showSample();
   } catch {
     overlay(msg('offline'));
     status(msg('noServer'), true);
@@ -214,13 +214,23 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   }
   init();
 
+  // Before any photo, the viewer shows the cat from a pre-rendered texture (0 API calls). The
+  // medallions need their own one, since their texture is laid out differently.
+  async function showSample() {
+    const res = await fetch(isMedallions() ? '/sample-medallions.jpg' : '/sample-texture.jpg');
+    if (res.ok) await viewer?.setTextureBlob(await res.blob());
+  }
+
   for (const opt of ['spin', 'effects', 'pulse', 'outline'] as const) {
     $<HTMLInputElement>(`opt-${opt}`).addEventListener('change', (e) =>
       viewer?.set({ [opt]: (e.target as HTMLInputElement).checked }));
   }
   const lod = () => +$<HTMLSelectElement>('opt-lod').value;
+  const isMedallions = () => checked('shape') === 'medallions';
+  // medallions are the seals plus their ring, capped at 45° so neighbours never overlap
+  const capDeg = () => Math.min(45, +$<HTMLInputElement>('sticker_deg').value + +$<HTMLInputElement>('ring_deg').value);
   const reloadMesh = async () => {
-    try { viewer?.setMesh(await api.mesh(lod(), checked('shape') ?? 'sphere')); } catch (e: any) { status(errorText(e), true); }
+    try { viewer?.setMesh(await api.mesh(lod(), checked('shape') ?? 'sphere', capDeg())); } catch (e: any) { status(errorText(e), true); }
   };
   $<HTMLSelectElement>('opt-lod').addEventListener('change', reloadMesh);
 
@@ -233,7 +243,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   function params() {
     return {
       shape: checked('shape'),
-      layout: checked('layout'),
+      layout: isMedallions() ? 'cube6' : checked('layout'),
       center: [center.x, center.y],
       radius: +$<HTMLInputElement>('radius').value,
       sticker_deg: +$<HTMLInputElement>('sticker_deg').value,
@@ -258,12 +268,20 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   const later = () => { clearTimeout(timer); timer = window.setTimeout(refresh, 250); };
 
   function syncLayout() {
-    const layout = checked('layout');
-    $('sticker-opts').hidden = layout === 'wrap';
-    $('ring-colors').hidden = layout === 'wrap';
+    const wrap = !isMedallions() && checked('layout') === 'wrap';
+    $('layouts').hidden = isMedallions(); // medallions are always the six seals
+    $('sticker-opts').hidden = wrap;
+    $('ring-colors').hidden = wrap;
   }
-  // the shape only changes the geometry: the texture stays the same, no new request needed
-  document.querySelectorAll('input[name="shape"]').forEach((el) => el.addEventListener('change', reloadMesh));
+  // A radial shape only changes the geometry (same texture). Medallions use their own texture
+  // layout (an atlas of the six seals), so switching to or from them also re-renders it.
+  let wasMedallions = false;
+  document.querySelectorAll('input[name="shape"]').forEach((el) => el.addEventListener('change', () => {
+    syncLayout();
+    reloadMesh();
+    if (isMedallions() !== wasMedallions) { if (photo) later(); else showSample(); }
+    wasMedallions = isMedallions();
+  }));
   document.querySelectorAll('input[name="layout"]').forEach((el) =>
     el.addEventListener('change', () => { syncLayout(); later(); }));
   document.querySelectorAll('input[name="bg"]').forEach((el) =>
@@ -274,7 +292,11 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     document.querySelectorAll<HTMLInputElement>('input[name="bg"]').forEach((r) => (r.checked = false));
     later();
   });
-  for (const id of ['sticker_deg', 'ring_deg']) $(id).addEventListener('input', later);
+  let meshTimer = 0;
+  for (const id of ['sticker_deg', 'ring_deg']) $(id).addEventListener('input', () => {
+    later();
+    if (isMedallions()) { clearTimeout(meshTimer); meshTimer = window.setTimeout(reloadMesh, 120); }
+  });
   $('radius').addEventListener('input', () => { drawDisc(); later(); });
 
   // --- photo + framing -----------------------------------------------------------------------
@@ -472,7 +494,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   .range { display: grid; gap: 6px; }
   input[type='range'] { width: 100%; accent-color: var(--teal); }
 
-  .shapes { border: 0; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .shapes { border: 0; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
   .shape {
     position: relative; display: grid; justify-items: center; gap: 4px; padding: 10px 4px 8px; cursor: pointer;
     border: 1px solid rgba(111, 84, 48, 0.45); background: rgba(255, 255, 255, 0.2);

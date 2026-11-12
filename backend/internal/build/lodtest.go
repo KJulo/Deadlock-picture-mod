@@ -78,7 +78,7 @@ func LODTest(t *Templates) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := ModFromTexture(t, LODTestTexture(info.Width), nil, 0.69)
+	res, err := ModFromTexture(t, LODTestTexture(info.Width), mesh.SphereGeometry(vmdl.SphereRadius, nil), 0.69)
 	if err != nil {
 		return nil, err
 	}

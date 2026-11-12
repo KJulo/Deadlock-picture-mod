@@ -45,7 +45,7 @@ const es = {
     framing: 'Encuadre',
     shape: 'La forma',
     shapesLegend: 'Modelo 3D',
-    shapes: { sphere: 'Esfera', cube: 'Dado', gem: 'Gema', coin: 'Moneda', egg: 'Huevo' },
+    shapes: { sphere: 'Esfera', cube: 'Dado', gem: 'Gema', coin: 'Moneda', egg: 'Huevo', medallions: 'Medallones' },
     layoutLegend: 'Sellos',
     layouts: {
       cube6: { name: 'Seis sellos', note: 'La foto seis veces: se ve entera caiga como caiga.' },
@@ -150,7 +150,7 @@ const en: Dict = {
     framing: 'Framing',
     shape: 'The shape',
     shapesLegend: '3D model',
-    shapes: { sphere: 'Sphere', cube: 'Die', gem: 'Gem', coin: 'Coin', egg: 'Egg' },
+    shapes: { sphere: 'Sphere', cube: 'Die', gem: 'Gem', coin: 'Coin', egg: 'Egg', medallions: 'Medallions' },
     layoutLegend: 'Seals',
     layouts: {
       cube6: { name: 'Six seals', note: 'The photo six times: it shows in full however it lands.' },

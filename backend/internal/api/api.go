@@ -66,7 +66,7 @@ func New(cfg Config, b BuildFunc) (*Server, error) {
 	for _, name := range mesh.ShapeNames {
 		shape, _ := mesh.ShapeByName(name)
 		for lod := range vmdl.LODs {
-			m, err := meshJSON(lod, name, shape)
+			m, err := meshJSON(lod, name, mesh.SphereGeometry(vmdl.SphereRadius, shape))
 			if err != nil {
 				return nil, err
 			}
@@ -221,7 +221,7 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 func (s *Server) defaults(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"params":           photo.DefaultParams(),
-		"shapes":           mesh.ShapeNames,
+		"shapes":           append(append([]string{}, mesh.ShapeNames...), mesh.MedallionsShape),
 		"max_upload_bytes": s.cfg.MaxUploadBytes,
 		"texture_size":     photo.TexSize,
 	})
@@ -231,6 +231,10 @@ func (s *Server) meshHandler(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("shape")
 	if name == "" {
 		name = "sphere"
+	}
+	if name == mesh.MedallionsShape {
+		s.medallionMesh(w, r)
+		return
 	}
 	lods, ok := s.mesh[name]
 	if !ok {
@@ -281,7 +285,7 @@ func (s *Server) texture(w http.ResponseWriter, r *http.Request) {
 		writeError(w, s.classify(r, err))
 		return
 	}
-	tex, err := photo.SphereTexture(img, p, size)
+	tex, err := photo.Texture(img, p, size)
 	if err != nil {
 		writeError(w, s.classify(r, err))
 		return
@@ -356,13 +360,13 @@ func writeBody(w http.ResponseWriter, r *http.Request, contentType string, data 
 // meshJSON renders one LOD of a shape as the game decodes it: positions (Source units, Z up),
 // unpacked normals, UVs decoded with the format that LOD declares, and only the real
 // (non-padding) triangles.
-func meshJSON(lodIndex int, name string, shape mesh.Shape) ([]byte, error) {
+func meshJSON(lodIndex int, name string, geom mesh.Geometry) ([]byte, error) {
 	lod := vmdl.LODs[lodIndex]
-	vb, idx, grid, err := mesh.BuildShapeBuffers(lod.VertexCount, lod.IndexCount, vmdl.SphereRadius, shape, lod.UV, nil)
+	b, err := geom(lod.VertexCount, lod.IndexCount, lod.UV, nil)
 	if err != nil {
 		return nil, err
 	}
-	n := grid.Vertices()
+	vb, idx, n := b.Vertices, b.Indices, b.Verts
 	positions, normals, uvs := make([]float32, 0, n*3), make([]float32, 0, n*3), make([]float64, 0, n*2)
 	for k := 0; k < n; k++ {
 		v := vb[k*mesh.VertexSize:]
@@ -378,7 +382,37 @@ func meshJSON(lodIndex int, name string, shape mesh.Shape) ([]byte, error) {
 			lod.UV.Decode(binary.LittleEndian.Uint16(v[14:])))
 	}
 	return json.Marshal(map[string]any{
-		"lod": lodIndex, "shape": name, "uv_format": lod.UV.String(), "grid": []int{grid.NU, grid.NV}, "up": "z", "radius": vmdl.SphereRadius,
-		"positions": positions, "normals": normals, "uvs": uvs, "indices": idx[:3*grid.Triangles()],
+		"lod": lodIndex, "shape": name, "uv_format": lod.UV.String(), "grid": []int{b.Grid.NU, b.Grid.NV}, "up": "z", "radius": vmdl.SphereRadius,
+		"positions": positions, "normals": normals, "uvs": uvs, "indices": idx[:3*b.Tris],
 	})
+}
+
+// medallionMesh serves the medallion geometry, which depends on the seal size
+// (?cap_deg = sticker_deg + ring_deg, clamped to 45), so it is built per request (~1 ms).
+func (s *Server) medallionMesh(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	lod, capDeg := 0, 43.0
+	if v := q.Get("lod"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n >= len(vmdl.LODs) {
+			writeError(w, &apiError{http.StatusBadRequest, "bad_lod", fmt.Sprintf("lod must be within 0..%d", len(vmdl.LODs)-1)})
+			return
+		}
+		lod = n
+	}
+	if v := q.Get("cap_deg"); v != "" {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil || math.IsNaN(f) || f < 5 || f > 90 {
+			writeError(w, &apiError{http.StatusBadRequest, "bad_params", "cap_deg must be within 5..90"})
+			return
+		}
+		capDeg = f
+	}
+	m, err := meshJSON(lod, mesh.MedallionsShape, mesh.MedallionGeometry(vmdl.SphereRadius, capDeg*math.Pi/180))
+	if err != nil {
+		writeError(w, s.classify(r, err))
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	writeBody(w, r, "application/json", m)
 }

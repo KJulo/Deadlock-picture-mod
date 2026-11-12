@@ -69,17 +69,25 @@ func Mod(t *Templates, photoData []byte, p photo.Params) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	texture, err := photo.SphereTexture(img, p, info.Width)
+	texture, err := photo.Texture(img, p, info.Width)
 	if err != nil {
 		return nil, err
 	}
-	shape, _ := mesh.ShapeByName(p.Shape) // validated above
-	return ModFromTexture(t, texture, shape, p.Roughness)
+	return ModFromTexture(t, texture, Geometry(p), p.Roughness)
+}
+
+// Geometry returns the mesh for p.Shape (validated): a radial shape or the medallions.
+func Geometry(p photo.Params) mesh.Geometry {
+	if p.Shape == mesh.MedallionsShape {
+		return mesh.MedallionGeometry(vmdl.SphereRadius, p.MedallionRad())
+	}
+	shape, _ := mesh.ShapeByName(p.Shape)
+	return mesh.SphereGeometry(vmdl.SphereRadius, shape)
 }
 
 // ModFromTexture builds the mod from an already composed colour texture.
-func ModFromTexture(t *Templates, texture *image.NRGBA, shape mesh.Shape, roughness float64) (*Result, error) {
-	model, lods, err := vmdl.BuildModel(t.Model, vmdl.SphereRadius, shape, nil)
+func ModFromTexture(t *Templates, texture *image.NRGBA, geom mesh.Geometry, roughness float64) (*Result, error) {
+	model, lods, err := vmdl.BuildModel(t.Model, geom, nil)
 	if err != nil {
 		return nil, fmt.Errorf("model: %w", err)
 	}

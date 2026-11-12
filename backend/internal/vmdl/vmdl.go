@@ -50,11 +50,11 @@ func BuildSphereModel(template []byte, radius float64) ([]byte, []LODMesh, error
 // BuildSphereModelRemap is BuildSphereModel with per-LOD UV remapping (nil = none). Used by the
 // LOD diagnostic, which sends each LOD to its own labelled band of the texture.
 func BuildSphereModelRemap(template []byte, radius float64, remap func(lod int) mesh.UVRemap) ([]byte, []LODMesh, error) {
-	return BuildModel(template, radius, nil, remap)
+	return BuildModel(template, mesh.SphereGeometry(radius, nil), remap)
 }
 
-// BuildModel writes any mesh.Shape (nil = the sphere) into every LOD of the model.
-func BuildModel(template []byte, radius float64, shape mesh.Shape, remap func(lod int) mesh.UVRemap) ([]byte, []LODMesh, error) {
+// BuildModel writes a geometry (the sphere, a shape or the medallions) into every LOD.
+func BuildModel(template []byte, geom mesh.Geometry, remap func(lod int) mesh.UVRemap) ([]byte, []LODMesh, error) {
 	res, err := resource.Parse(template)
 	if err != nil {
 		return nil, nil, err
@@ -69,10 +69,11 @@ func BuildModel(template []byte, radius float64, shape mesh.Shape, remap func(lo
 		if remap != nil {
 			r = remap(n)
 		}
-		vb, idx, grid, err := mesh.BuildShapeBuffers(lod.VertexCount, lod.IndexCount, radius, shape, lod.UV, r)
+		b, err := geom(lod.VertexCount, lod.IndexCount, lod.UV, r)
 		if err != nil {
 			return nil, nil, err
 		}
+		vb, idx := b.Vertices, b.Indices
 		cv, err := meshopt.EncodeVertexBuffer(vb, mesh.VertexSize)
 		if err != nil {
 			return nil, nil, err
@@ -83,7 +84,7 @@ func BuildModel(template []byte, radius float64, shape mesh.Shape, remap func(lo
 		}
 		res.Blocks[lod.VertexBlock].Data = cv
 		res.Blocks[lod.IndexBlock].Data = ci
-		lods[n] = LODMesh{grid, vb, idx}
+		lods[n] = LODMesh{b.Grid, vb, idx}
 	}
 	return res.Serialize(), lods, nil
 }
