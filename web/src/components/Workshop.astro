@@ -12,7 +12,7 @@ const backgrounds = [
   [sw.blood, '#6e1f1f'], [sw.bone, '#d9cfb8'], [sw.onyx, '#151515'],
 ];
 const rings = [[sw.bone, '#ebebeb'], [sw.brass, '#c9a45c'], [sw.onyx, '#141414'], [sw.soul, '#29ffc9']];
-const layouts = (['cube6', 'twice', 'wrap'] as const).map((value) => ({ value, ...w.layouts[value] }));
+const layouts = (['cube6', 'twice', 'wrap', 'single'] as const).map((value) => ({ value, ...w.layouts[value] }));
 // 3D shapes (backend mesh.ShapeNames). Same texture and photo mapping for all of them.
 const shapeIcons = {
   sphere: '<circle cx="24" cy="24" r="18"/>',
@@ -112,6 +112,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
                 {l.value === 'cube6' && (<g class="seal"><circle cx="24" cy="24" r="7" /><circle cx="9" cy="24" r="4" /><circle cx="39" cy="24" r="4" /><circle cx="24" cy="9" r="4" /><circle cx="24" cy="39" r="4" /></g>)}
                 {l.value === 'twice' && (<g class="seal"><circle cx="24" cy="24" r="12" /></g>)}
                 {l.value === 'wrap' && (<g class="seal"><ellipse cx="24" cy="24" rx="21" ry="21" /></g>)}
+                {l.value === 'single' && (<g class="seal"><path d="M24 3a21 21 0 0 1 0 42Z" /></g>)}
               </svg>
               <span class="layout-name">{l.name}</span>
             </label>
@@ -207,6 +208,16 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     viewer = createViewer($<HTMLCanvasElement>('view'), { mesh, background: 0x0e1719 });
     if (reducedMotion) { viewer.set({ spin: false }); $<HTMLInputElement>('opt-spin').checked = false; }
     await showSample();
+    // The sample cat is a real photo from the start, so every control works before the user
+    // picks one. Its texture is already on screen (pre-rendered), so no request is needed yet.
+    if (!photo) {
+      const cat = await fetch('/sample.jpg');
+      if (cat.ok && !photo) {
+        usePhoto(await cat.blob(), false);
+        document.querySelector('.tpl[data-src="/sample.jpg"]')?.classList.add('on');
+        status(msg('ready'));
+      }
+    }
   } catch {
     overlay(msg('offline'));
     status(msg('noServer'), true);
@@ -243,7 +254,9 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   function params() {
     return {
       shape: checked('shape'),
-      layout: isMedallions() ? 'cube6' : checked('layout'),
+      // "single" is the backend's wrap layout with the back half in the background colour
+      layout: isMedallions() ? 'cube6' : checked('layout') === 'single' ? 'wrap' : checked('layout'),
+      back: checked('layout') === 'single' ? 'color' : 'mirror',
       center: [center.x, center.y],
       radius: +$<HTMLInputElement>('radius').value,
       sticker_deg: +$<HTMLInputElement>('sticker_deg').value,
@@ -268,7 +281,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   const later = () => { clearTimeout(timer); timer = window.setTimeout(refresh, 250); };
 
   function syncLayout() {
-    const wrap = !isMedallions() && checked('layout') === 'wrap';
+    const wrap = !isMedallions() && ['wrap', 'single'].includes(checked('layout') ?? '');
     $('layouts').hidden = isMedallions(); // medallions are always the six seals
     $('sticker-opts').hidden = wrap;
     $('ring-colors').hidden = wrap;
@@ -312,7 +325,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     });
   }
 
-  function usePhoto(file: Blob) {
+  function usePhoto(file: Blob, render = true) {
     if (file.size > maxBytes) {
       status(msg('tooBig', { size: (file.size / 1e6).toFixed(1), max: Math.round(maxBytes / (1 << 20)) }), true);
       return;
@@ -324,7 +337,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     img.onload = drawDisc;
     $('framing').hidden = false;
     $<HTMLButtonElement>('forge').disabled = false;
-    refresh();
+    if (render) refresh();
   }
 
   $<HTMLInputElement>('photo').addEventListener('change', (e) => {
@@ -506,7 +519,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   .shape:has(input:checked) svg { fill: var(--soul); stroke: var(--teal-deep); }
   .shape:has(input:focus-visible) { outline: 2px solid var(--teal); outline-offset: 2px; }
   .layouts legend { margin-bottom: 8px; color: var(--ink-soft); }
-  .layouts { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .layouts { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .layout {
     position: relative; display: grid; justify-items: center; gap: 4px; text-align: center;
     padding: 12px 8px; cursor: pointer; border: 1px solid rgba(111, 84, 48, 0.45);
@@ -515,7 +528,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   .layout input { position: absolute; opacity: 0; }
   .layout svg { width: 48px; height: 48px; }
   .layout .ball { fill: var(--teal); stroke: var(--brass-dark); }
-  .layout .seal circle, .layout .seal ellipse { fill: var(--parchment); stroke: var(--ink); stroke-width: 1; }
+  .layout .seal circle, .layout .seal ellipse, .layout .seal path { fill: var(--parchment); stroke: var(--ink); stroke-width: 1; }
   .layout-name { font-weight: 600; font-size: 1.05rem; }
   .layout:has(input:checked) { border-color: var(--teal-deep); background: rgba(24, 120, 140, 0.14); box-shadow: inset 0 0 0 1px var(--teal-deep); }
   .layout:has(input:focus-visible) { outline: 2px solid var(--teal); outline-offset: 2px; }
