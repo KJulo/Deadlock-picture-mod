@@ -182,10 +182,24 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   }
   renderer.setAnimationLoop(frame);
 
+  // A square PNG of the current view (centre crop, without the selection marker), used as the
+  // mod's cover picture in Deadlock Mod Manager.
+  function cover(size = 512) {
+    const shown = marker.visible;
+    marker.visible = false;
+    renderer.render(scene, camera);
+    const side = Math.min(canvas.width, canvas.height);
+    const out = Object.assign(document.createElement('canvas'), { width: size, height: size });
+    out.getContext('2d').drawImage(canvas, (canvas.width - side) / 2, (canvas.height - side) / 2, side, side, 0, 0, size, size);
+    marker.visible = shown;
+    return new Promise((ok, fail) => out.toBlob((b) => (b ? ok(b) : fail(new Error('cover'))), 'image/png'));
+  }
+
   return {
     setMesh, setTextureBlob, set, setSeals,
     material, // exposed for calibration (uniforms)
     snapshot: () => canvas.toDataURL('image/png'),
+    cover,
     dispose() { renderer.setAnimationLoop(null); renderer.dispose(); controls.dispose(); timer.dispose?.(); },
   };
 }

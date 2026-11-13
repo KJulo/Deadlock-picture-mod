@@ -173,6 +173,10 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
           <span>{w.forgeButton}</span>
         </button>
         <p class="status" id="status" role="status" aria-live="polite">{t.status.needPhoto}</p>
+        <div class="cover" id="cover" hidden>
+          <a class="tool cover-link" id="cover-link" download="relicario_portada.png">{w.coverButton}</a>
+          <p class="hint">{w.coverHint}</p>
+        </div>
       </li>
     </ol>
   </Plate>
@@ -563,6 +567,13 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       status(msg('done'));
+      // the cover for Mod Manager: a picture of the same preview the .vpk was forged from
+      try {
+        const link = $<HTMLAnchorElement>('cover-link');
+        if (link.href) URL.revokeObjectURL(link.href);
+        link.href = URL.createObjectURL(await viewer.cover());
+        $('cover').hidden = false;
+      } catch { /* the .vpk is what matters; the cover is optional */ }
     } catch (e: any) {
       status(errorText(e), true);
     } finally {
@@ -721,6 +732,8 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   .forge:disabled { cursor: not-allowed; filter: grayscale(0.7) brightness(0.8); }
   .status { margin: 12px 0 0; min-height: 1.6em; font-style: italic; color: var(--ink-soft); }
   .status.error { color: var(--oxblood); font-style: normal; }
+  .cover { display: grid; gap: 6px; margin-top: 8px; justify-items: start; }
+  .cover-link { display: inline-flex; align-items: center; font-size: 0.95rem; text-decoration: none; }
 
   .seal-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; align-items: center; }
   :global(.seal-choice) { cursor: pointer; background: transparent; border: 2px solid transparent; color: var(--ink); padding: 3px; }

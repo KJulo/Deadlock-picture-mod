@@ -71,6 +71,8 @@ const es = {
     },
     forgeTitle: 'Forjar',
     forgeButton: 'Forjar el .vpk',
+    coverButton: 'Descargar portada',
+    coverHint: 'Al agregar el .vpk en Mod Manager, elígela como imagen del mod.',
   },
   // Strings the workshop script shows at runtime. {placeholders} are filled in by the script.
   status: {
@@ -98,7 +100,7 @@ const es = {
   install: {
     title: 'Instalar',
     steps: [
-      'En <strong>Deadlock Mod Manager</strong>, agrega el <code>.vpk</code> como mod local.',
+      'En <strong>Deadlock Mod Manager</strong>, agrega el <code>.vpk</code> como mod local y elige la portada como imagen.',
       'Actívalo y apaga otros mods del contenedor.',
       'Para verlo al tiro, en la consola de una partida privada:',
     ],
@@ -184,6 +186,8 @@ const en: Dict = {
     },
     forgeTitle: 'Forge',
     forgeButton: 'Forge the .vpk',
+    coverButton: 'Download cover',
+    coverHint: 'When adding the .vpk in Mod Manager, pick it as the mod image.',
   },
   status: {
     needPhoto: 'First, a photo.',
@@ -209,7 +213,7 @@ const en: Dict = {
   install: {
     title: 'Install',
     steps: [
-      'In <strong>Deadlock Mod Manager</strong>, add the <code>.vpk</code> as a local mod.',
+      'In <strong>Deadlock Mod Manager</strong>, add the <code>.vpk</code> as a local mod and pick the cover as its image.',
       'Enable it and turn off other container mods.',
       'To see it right away, in a private match console:',
     ],
