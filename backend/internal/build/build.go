@@ -55,13 +55,24 @@ func LoadTemplates(dir string) (*Templates, error) {
 
 // Mod builds the mod from encoded photo bytes (JPEG/PNG/GIF/WebP) for p.Variant.
 func Mod(t *Templates, photoData []byte, p photo.Params) (*Result, error) {
-	if err := p.Validate(); err != nil {
+	return ModPhotos(t, [][]byte{photoData}, p)
+}
+
+// ModPhotos builds from all uploaded photos using the same texture as the preview.
+func ModPhotos(t *Templates, photoData [][]byte, p photo.Params) (*Result, error) {
+	if err := p.ValidatePhotos(len(photoData)); err != nil {
 		return nil, err
 	}
-	img, err := photo.Load(photoData, p)
-	if err != nil {
-		return nil, err
+	imgs := make([]*photo.RGB, len(photoData))
+	for i, data := range photoData {
+		var err error
+		imgs[i], err = photo.Load(data, p)
+		if err != nil {
+			return nil, err
+		}
 	}
+	img := imgs[0]
+	var err error
 	if p.Variant == "cage" {
 		return cage(t, img, p)
 	}
@@ -69,7 +80,7 @@ func Mod(t *Templates, photoData []byte, p photo.Params) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	texture, err := photo.Texture(img, p, info.Width)
+	texture, err := photo.TexturePhotos(imgs, p, info.Width)
 	if err != nil {
 		return nil, err
 	}

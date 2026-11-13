@@ -39,6 +39,7 @@ type Config struct {
 	MaxConcurrent  int           // builds/textures running at once (each one uses every core)
 	QueueTimeout   time.Duration // how long a request may wait for a free slot before 503
 	AllowedOrigins []string      // CORS: frontend origins allowed to call the API ("*" = any)
+	MultiBuild     func([][]byte, photo.Params) (*build.Result, error)
 	Logger         *slog.Logger
 }
 
@@ -138,14 +139,15 @@ const maxParamsBytes = 16 << 10
 
 // readUpload streams the multipart body: the photo goes straight into memory (r.ParseMultipartForm
 // would spill large files to temporary files on disk, which we never want for user photos).
-func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) ([]byte, photo.Params, error) {
+func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) ([][]byte, photo.Params, error) {
 	p := photo.DefaultParams()
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxUploadBytes+maxParamsBytes+64<<10)
 	mr, err := r.MultipartReader()
 	if err != nil {
 		return nil, p, &apiError{http.StatusBadRequest, "bad_request", "expected multipart/form-data with a 'photo' file"}
 	}
-	var data []byte
+	data := make([][]byte, 6)
+	var total int64
 	for {
 		part, err := mr.NextPart()
 		if err == io.EOF {
@@ -154,17 +156,26 @@ func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) ([]byte, pho
 		if err != nil {
 			return nil, p, s.bodyError(err)
 		}
-		switch part.FormName() {
-		case "photo":
-			data, err = io.ReadAll(io.LimitReader(part, s.cfg.MaxUploadBytes+1))
+		name := part.FormName()
+		index := -1
+		if name == "photo" {
+			index = 0
+		} else if len(name) == 6 && strings.HasPrefix(name, "photo") && name[5] >= '1' && name[5] <= '5' {
+			index = int(name[5] - '0')
+		}
+		if index >= 0 {
+			if data[index] != nil {
+				return nil, p, &apiError{http.StatusBadRequest, "bad_request", "duplicate photo"}
+			}
+			data[index], err = io.ReadAll(io.LimitReader(part, s.cfg.MaxUploadBytes-total+1))
 			if err != nil {
 				return nil, p, s.bodyError(err)
 			}
-			if int64(len(data)) > s.cfg.MaxUploadBytes {
-				return nil, p, &apiError{http.StatusRequestEntityTooLarge, "photo_too_large",
-					fmt.Sprintf("the photo must be at most %d MB", s.cfg.MaxUploadBytes>>20)}
+			total += int64(len(data[index]))
+			if total > s.cfg.MaxUploadBytes {
+				return nil, p, &apiError{http.StatusRequestEntityTooLarge, "photo_too_large", "photos exceed upload limit"}
 			}
-		case "params":
+		} else if name == "params" {
 			raw, err := io.ReadAll(io.LimitReader(part, maxParamsBytes+1))
 			if err != nil {
 				return nil, p, s.bodyError(err)
@@ -180,13 +191,24 @@ func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) ([]byte, pho
 		}
 		part.Close()
 	}
-	if len(data) == 0 {
+	if len(data[0]) == 0 {
 		return nil, p, &apiError{http.StatusBadRequest, "missing_photo", "no 'photo' file in the form"}
 	}
-	if err := p.Validate(); err != nil {
+	n := 1
+	for i := 1; i < len(data); i++ {
+		if len(data[i]) > 0 {
+			n = i + 1
+		}
+	}
+	for _, d := range data[:n] {
+		if len(d) == 0 {
+			return nil, p, &apiError{http.StatusBadRequest, "bad_request", "missing photo index"}
+		}
+	}
+	if err := p.ValidatePhotos(n); err != nil {
 		return nil, p, err
 	}
-	return data, p, nil
+	return data[:n], p, nil
 }
 
 func (s *Server) bodyError(err error) error {
@@ -280,12 +302,15 @@ func (s *Server) texture(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 
-	img, err := photo.Load(data, p)
-	if err != nil {
-		writeError(w, s.classify(r, err))
-		return
+	imgs := make([]*photo.RGB, len(data))
+	for i, d := range data {
+		imgs[i], err = photo.Load(d, p)
+		if err != nil {
+			writeError(w, s.classify(r, err))
+			return
+		}
 	}
-	tex, err := photo.Texture(img, p, size)
+	tex, err := photo.TexturePhotos(imgs, p, size)
 	if err != nil {
 		writeError(w, s.classify(r, err))
 		return
@@ -313,7 +338,14 @@ func (s *Server) buildHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 
-	res, err := s.build(data, p)
+	var res *build.Result
+	if s.cfg.MultiBuild != nil {
+		res, err = s.cfg.MultiBuild(data, p)
+	} else if len(data) == 1 {
+		res, err = s.build(data[0], p)
+	} else {
+		err = fmt.Errorf("%w: multiple photos unavailable", photo.ErrBadParams)
+	}
 	if err != nil {
 		writeError(w, s.classify(r, err))
 		return

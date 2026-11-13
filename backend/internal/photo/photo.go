@@ -25,7 +25,17 @@ import (
 const TexSize = 2048
 
 // Params are the user's choices. Zero values are not meaningful: start from DefaultParams().
+type Seal struct {
+	Photo   int        `json:"photo"`
+	Dir     [3]float64 `json:"dir"`
+	RollDeg float64    `json:"roll_deg"`
+	Center  [2]float64 `json:"center"`
+	Radius  float64    `json:"radius"`
+	TurnDeg float64    `json:"turn_deg"`
+}
+
 type Params struct {
+	Seals       []Seal     `json:"seals,omitempty"`
 	Variant     string     `json:"variant"`     // sphere (our sphere) | cage (the original model)
 	Shape       string     `json:"shape"`       // sphere variant only: mesh.ShapeNames or "medallions"
 	Layout      string     `json:"layout"`      // cube6 | twice | wrap | single (sphere only)
@@ -84,6 +94,45 @@ func (p Params) Validate() error {
 		return fmt.Errorf("%w: rotation_deg must be within -360..360", ErrBadParams)
 	case !in(p.TurnDeg, -360, 360):
 		return fmt.Errorf("%w: turn_deg must be within -360..360", ErrBadParams)
+	}
+	if len(p.Seals) > 32 {
+		return fmt.Errorf("%w: too many seals", ErrBadParams)
+	}
+	for i, s := range p.Seals {
+		if s.Photo < 0 || s.Photo >= 6 || !in(s.Center[0], 0, 1) || !in(s.Center[1], 0, 1) || !in(s.Radius, 0.05, 1.5) || !in(s.TurnDeg, -360, 360) || !in(s.RollDeg, -360, 360) {
+			return fmt.Errorf("%w: invalid seal", ErrBadParams)
+		}
+		length := math.Hypot(math.Hypot(s.Dir[0], s.Dir[1]), s.Dir[2])
+		if length < 1e-9 || math.IsNaN(length) || math.IsInf(length, 0) {
+			return fmt.Errorf("%w: invalid seal direction", ErrBadParams)
+		}
+		if p.Shape == mesh.MedallionsShape {
+			if len(p.Seals) != 6 {
+				return fmt.Errorf("%w: medallions require six seals", ErrBadParams)
+			}
+			axis := layouts["cube6"][i].centre
+			for k := range axis {
+				if math.Abs(s.Dir[k]/length-axis[k]) > 1e-6 {
+					return fmt.Errorf("%w: medallions require fixed directions", ErrBadParams)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// ValidatePhotos verifies that every seal references an uploaded photo.
+func (p Params) ValidatePhotos(n int) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	if n < 1 {
+		return fmt.Errorf("%w: missing photo", ErrBadParams)
+	}
+	for _, s := range p.Seals {
+		if s.Photo >= n {
+			return fmt.Errorf("%w: missing seal photo", ErrBadParams)
+		}
 	}
 	return nil
 }
@@ -159,14 +208,20 @@ func photoPoint(photo *RGB, p Params) func(sx, sy float64) (x, y float64) {
 
 // SphereTexture renders the size×size RGBA texture; alpha = p.ColorAlpha everywhere.
 func SphereTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
-	if err := p.Validate(); err != nil {
+	return SphereTexturePhotos([]*RGB{photo}, p, size)
+}
+
+// SphereTexturePhotos renders freely placed seals using the nearest centre; the first wins ties.
+func SphereTexturePhotos(photos []*RGB, p Params, size int) (*image.NRGBA, error) {
+	if err := p.ValidatePhotos(len(photos)); err != nil {
 		return nil, err
 	}
+	photo := photos[0]
 	at := photoPoint(photo, p)
 	alpha := uint8(math.RoundToEven(p.ColorAlpha * 255))
 	out := image.NewNRGBA(image.Rect(0, 0, size, size))
 	front := sticker{vec{1, 0, 0}, vec{0, 0, 1}}
-	texel := stickerTexel(photo, p)
+	texel := stickerTexelPhotos(photos, p)
 
 	for row := 0; row < size; row++ {
 		th := (float64(row) + 0.5) / float64(size) * math.Pi
@@ -203,6 +258,65 @@ func SphereTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
 // stickerTexel returns the colour of direction d for the sticker layouts (cube6, twice): the
 // photo inside the nearest sticker, then its ring, then the background.
 func stickerTexel(photo *RGB, p Params) func(d vec) [3]float64 {
+	return stickerTexelPhotos([]*RGB{photo}, p)
+}
+
+func stickerTexelPhotos(photos []*RGB, p Params) func(d vec) [3]float64 {
+	photo := photos[0]
+	if len(p.Seals) > 0 {
+		stickers := make([]sticker, len(p.Seals))
+		points := make([]func(float64, float64) (float64, float64), len(p.Seals))
+		for i, seal := range p.Seals {
+			d := vec(seal.Dir)
+			n := math.Sqrt(d.dot(d))
+			for k := range d {
+				d[k] /= n
+			}
+			up := vec{0, 0, 1}
+			if math.Abs(d[2]) > 0.999 {
+				if d[2] > 0 {
+					up = vec{-1, 0, 0}
+				} else {
+					up = vec{1, 0, 0}
+				}
+			} else {
+				for k := range up {
+					up[k] -= d[2] * d[k]
+				}
+				n = math.Sqrt(up.dot(up))
+				for k := range up {
+					up[k] /= n
+				}
+			}
+			right := cross(up, d)
+			sin, cos := math.Sincos(seal.RollDeg * math.Pi / 180)
+			for k := range up {
+				up[k] = up[k]*cos + right[k]*sin
+			}
+			stickers[i] = sticker{d, up}
+			q := p
+			q.Center, q.Radius, q.TurnDeg = seal.Center, seal.Radius, seal.TurnDeg
+			points[i] = photoPoint(photos[seal.Photo], q)
+		}
+		R, ring := p.StickerDeg*math.Pi/180, p.RingDeg*math.Pi/180
+		return func(d vec) [3]float64 {
+			best, bestCos := 0, math.Inf(-1)
+			for i, s := range stickers {
+				if c := d.dot(s.centre); c > bestCos {
+					best, bestCos = i, c
+				}
+			}
+			sx, sy, ang := discCoords(d, stickers[best], R, p.Projection)
+			if ang <= R {
+				x, y := points[best](sx, sy)
+				return sampleBilinear(photos[p.Seals[best].Photo], x, y)
+			}
+			if ang <= R+ring {
+				return [3]float64{float64(p.RingColor[0]), float64(p.RingColor[1]), float64(p.RingColor[2])}
+			}
+			return [3]float64{float64(p.BgColor[0]), float64(p.BgColor[1]), float64(p.BgColor[2])}
+		}
+	}
 	at := photoPoint(photo, p)
 	R, ring := p.StickerDeg*math.Pi/180, p.RingDeg*math.Pi/180
 	stickers := layouts[p.Layout]
@@ -241,10 +355,15 @@ func (p Params) MedallionRad() float64 {
 // Texture renders the colour texture the chosen shape expects: the equirectangular sphere
 // texture, or the medallion atlas.
 func Texture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
+	return TexturePhotos([]*RGB{photo}, p, size)
+}
+
+// TexturePhotos renders the same multi-photo texture for preview and build.
+func TexturePhotos(photos []*RGB, p Params, size int) (*image.NRGBA, error) {
 	if p.Shape == mesh.MedallionsShape {
-		return MedallionTexture(photo, p, size)
+		return MedallionTexturePhotos(photos, p, size)
 	}
-	return SphereTexture(photo, p, size)
+	return SphereTexturePhotos(photos, p, size)
 }
 
 // MedallionTexture renders the six seals into the atlas discs of mesh.MedallionUV. Each texel
@@ -252,11 +371,16 @@ func Texture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
 // layout), so seals look the same as on the sphere. Texels just outside a disc repeat its edge
 // colour, so filtering and mipmaps do not bleed the background into the ring.
 func MedallionTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
-	if err := p.Validate(); err != nil {
+	return MedallionTexturePhotos([]*RGB{photo}, p, size)
+}
+
+// MedallionTexturePhotos renders the fixed atlas with per-seal photos.
+func MedallionTexturePhotos(photos []*RGB, p Params, size int) (*image.NRGBA, error) {
+	if err := p.ValidatePhotos(len(photos)); err != nil {
 		return nil, err
 	}
 	p.Layout = "cube6"
-	texel := stickerTexel(photo, p)
+	texel := stickerTexelPhotos(photos, p)
 	capRad := p.MedallionRad()
 	alpha := uint8(math.RoundToEven(p.ColorAlpha * 255))
 	bg := [3]float64{float64(p.BgColor[0]), float64(p.BgColor[1]), float64(p.BgColor[2])}

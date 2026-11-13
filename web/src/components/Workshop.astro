@@ -32,7 +32,7 @@ const templates = [
   [tn.eightBall, '/templates/bola8.svg'], [tn.duck, '/templates/pato.svg'], [tn.crystal, '/templates/cristal.svg'],
 ];
 // Runtime strings for the script below.
-const messages = { status: { ...t.status, templateError: w.templateError }, errors: t.errors };
+const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal }, status: { ...t.status, templateError: w.templateError }, errors: t.errors };
 ---
 <section id="taller" class="workshop wrap" aria-labelledby="taller-title" data-messages={JSON.stringify(messages)}>
   <div class="stage">
@@ -77,6 +77,9 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
           </div>
         </div>
 
+        <div id="seal-list" class="seal-list" role="group" aria-label={w.sealList}></div>
+        <button type="button" class="tool" id="add-seal">{w.addSeal}</button>
+        <p class="hint" id="move-limit" hidden>{w.moveLimit}</p>
         <div class="framing" id="framing" hidden>
           <canvas class="seal-edit" id="seal" role="img" aria-label={w.thumbAlt}></canvas>
           <div class="frame-tools">
@@ -179,7 +182,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   import { createApi } from '../lib/preview/api.js';
 
   // Localized strings, rendered into the section by the server (see `messages` above).
-  const M: { status: Record<string, string>; errors: Record<string, string> } =
+  const M: { workshop: Record<string, string>; status: Record<string, string>; errors: Record<string, string> } =
     JSON.parse(document.getElementById('taller')!.dataset.messages!);
   const msg = (key: string, vars: Record<string, string | number> = {}) =>
     M.status[key].replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
@@ -204,6 +207,48 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   // framing: the photo point at the seal centre (0..1), zoom (1 = disc of half the shorter side)
   // and clockwise turn in degrees. The seal editor and the backend map photos the same way.
   const frame = { x: 0.5, y: 0.5, zoom: 1, turn: 0 };
+  type Seal = { dir: number[]; file: Blob; frame: typeof frame };
+  let seals: Seal[] = [];
+  let selected = 0;
+  const axes = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  function resetSeals() {
+    if (!photo) return;
+    const n = isMedallions() || checked('layout') === 'cube6' ? 6 : checked('layout') === 'twice' ? 2 : 1;
+    seals = axes.slice(0,n).map(dir => ({ dir: [...dir], file: photo!, frame: {...frame} }));
+    selected = 0; renderSeals();
+  }
+  function renderSeals() {
+    const list = $('seal-list'); list.replaceChildren();
+    list.hidden = isWrap();
+    $('add-seal').hidden = isWrap() || isMedallions();
+    $('move-limit').hidden = !isWrap() && !isMedallions();
+    seals.forEach((s,i) => {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'seal-choice';
+      button.setAttribute('aria-label', `${M.workshop.sealName} ${i+1}`); button.setAttribute('aria-pressed', String(i === selected));
+      const img = document.createElement('img'); const url = URL.createObjectURL(s.file); img.src = url; img.onload = () => URL.revokeObjectURL(url); img.alt = ''; button.append(img, document.createTextNode(String(i+1)));
+      button.onclick = () => selectSeal(i); list.append(button);
+    });
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'tool'; remove.textContent = '×'; remove.title = M.workshop.deleteSeal; remove.setAttribute('aria-label', M.workshop.deleteSeal); remove.disabled = seals.length <= 1 || isMedallions();
+    remove.onclick = () => { seals.splice(selected,1); selectSeal(Math.min(selected,seals.length-1)); refresh(); }; list.append(remove);
+    viewer?.setSeals(seals.map(s => s.dir), selected, +$<HTMLInputElement>('sticker_deg').value, !isMedallions() && !isWrap());
+  }
+  function selectSeal(i: number) {
+    selected = i; const s = seals[i]; if (!s) return;
+    photo = s.file; Object.assign(frame,s.frame); zoomInput.value = String(frame.zoom); turnInput.value = String(frame.turn);
+    if (pic.src) URL.revokeObjectURL(pic.src); pic.onload = drawSeal; pic.src = URL.createObjectURL(photo); renderSeals();
+  }
+  $('add-seal').addEventListener('click', () => {
+    if (!photo || seals.length >= 32) return;
+    // Place the new seal in the largest available gap so it is selectable immediately.
+    let dir = [1,0,0], best = Infinity;
+    for (let i = 0; i < 200; i++) {
+      const z = 1 - 2 * (i + 0.5) / 200, a = i * Math.PI * (3 - Math.sqrt(5)), r = Math.sqrt(1-z*z);
+      const candidate = [r*Math.cos(a), r*Math.sin(a), z];
+      const score = Math.max(...seals.map(s => s.dir.reduce((sum,v,k) => sum + v*candidate[k],0)));
+      if (score < best) { best = score; dir = candidate; }
+    }
+    seals.push({dir,file:photo,frame:{...frame}}); selectSeal(seals.length-1); refresh();
+  });
   let inflight: AbortController | null = null;
   let timer = 0;
 
@@ -215,7 +260,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     ]);
     maxBytes = defaults.max_upload_bytes;
     $('max-mb').textContent = String(Math.round(maxBytes / (1 << 20)));
-    viewer = createViewer($<HTMLCanvasElement>('view'), { mesh, background: 0x0e1719 });
+    viewer = createViewer($<HTMLCanvasElement>('view'), { mesh, background: 0x0e1719, onSelect: (i: number) => selectSeal(i), onMove: (dir: number[], done: boolean) => { seals[selected].dir = dir; renderSeals(); clearTimeout(timer); if (done) refresh(); else { timer = window.setTimeout(() => refresh(512), 100); } } });
     if (reducedMotion) { viewer.set({ spin: false }); $<HTMLInputElement>('opt-spin').checked = false; }
     await showSample();
     // The sample cat is a real photo from the start, so every control works before the user
@@ -263,6 +308,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
 
   function params() {
     return {
+      seals: isWrap() ? [] : seals.map(s => ({photo: uniquePhotos().indexOf(s.file), dir:s.dir, roll_deg:0, center:[s.frame.x,s.frame.y], radius:0.5/s.frame.zoom, turn_deg:s.frame.turn})),
       shape: checked('shape'),
       layout: isMedallions() ? 'cube6' : checked('layout'),
       center: [frame.x, frame.y],
@@ -275,13 +321,14 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     };
   }
 
-  async function refresh() {
+  const uniquePhotos = () => Array.from(new Set(seals.map(s => s.file)));
+  async function refresh(size = 2048) {
     if (!photo || !viewer) return;
     inflight?.abort();
     inflight = new AbortController();
     status(msg('rendering'));
     try {
-      await viewer.setTextureBlob(await api.texture(photo, params(), 2048, inflight.signal));
+      await viewer.setTextureBlob(await api.texture(isWrap() ? [photo] : uniquePhotos(), params(), size, inflight.signal));
       status(msg('ready'));
     } catch (e: any) {
       if (e.name !== 'AbortError') status(errorText(e), true);
@@ -302,18 +349,20 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     $('layouts').hidden = isMedallions(); // medallions are always the six seals
     $('sticker-opts').hidden = wrap;
     $('ring-colors').hidden = wrap;
+    renderSeals();
   }
   // A radial shape only changes the geometry (same texture). Medallions use their own texture
   // layout (an atlas of the six seals), so switching to or from them also re-renders it.
   let wasMedallions = false;
   document.querySelectorAll('input[name="shape"]').forEach((el) => el.addEventListener('change', () => {
+    if (isMedallions() !== wasMedallions) resetSeals();
     syncLayout();
     reloadMesh();
     if (isMedallions() !== wasMedallions) { if (photo) later(); else showSample(); }
     wasMedallions = isMedallions();
   }));
   document.querySelectorAll('input[name="layout"]').forEach((el) =>
-    el.addEventListener('change', () => { syncLayout(); later(); }));
+    el.addEventListener('change', () => { resetSeals(); syncLayout(); later(); }));
   document.querySelectorAll('input[name="bg"]').forEach((el) =>
     el.addEventListener('change', () => { bgCustom = null; later(); }));
   document.querySelectorAll('input[name="ring"]').forEach((el) => el.addEventListener('change', later));
@@ -384,6 +433,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     frame.turn = ((((frame.turn + 180) % 360) + 360) % 360) - 180; // keep within -180..180
     zoomInput.value = String(frame.zoom);
     turnInput.value = String(Math.round(frame.turn));
+    if (seals[selected]) seals[selected].frame = {...frame};
     drawSeal();
     later();
   }
@@ -446,6 +496,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
       status(msg('tooBig', { size: (file.size / 1e6).toFixed(1), max: Math.round(maxBytes / (1 << 20)) }), true);
       return;
     }
+    if (seals.length && !seals.some(s => s.file === file) && uniquePhotos().length >= 6 && seals.filter(s => s.file === seals[selected].file).length > 1) { status(msg('tooManyPhotos'), true); return; }
     photo = file;
     Object.assign(frame, { x: 0.5, y: 0.5, zoom: 1, turn: 0 });
     zoomInput.value = '1';
@@ -453,6 +504,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     if (pic.src) URL.revokeObjectURL(pic.src);
     pic.onload = drawSeal;
     pic.src = URL.createObjectURL(file);
+    if (!seals.length) resetSeals(); else { seals[selected].file = file; seals[selected].frame = {...frame}; renderSeals(); }
     $('framing').hidden = false;
     $<HTMLButtonElement>('forge').disabled = false;
     if (render) refresh();
@@ -504,7 +556,7 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
     button.disabled = true;
     status(msg('forging'));
     try {
-      const blob = await api.build(photo, params());
+      const blob = await api.build(isWrap() ? [photo] : uniquePhotos(), params());
       const a = Object.assign(document.createElement('a'), {
         href: URL.createObjectURL(blob), download: 'relicario_soul_container.vpk',
       });
@@ -670,6 +722,11 @@ const messages = { status: { ...t.status, templateError: w.templateError }, erro
   .status { margin: 12px 0 0; min-height: 1.6em; font-style: italic; color: var(--ink-soft); }
   .status.error { color: var(--oxblood); font-style: normal; }
 
+  .seal-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; align-items: center; }
+  :global(.seal-choice) { cursor: pointer; background: transparent; border: 2px solid transparent; color: var(--ink); padding: 3px; }
+  :global(.seal-choice[aria-pressed="true"]) { border-color: var(--teal-deep); }
+  :global(.seal-choice img) { width: 42px; height: 42px; object-fit: cover; border-radius: 50%; vertical-align: middle; }
+  :global(.seal-choice:focus-visible) { outline: 2px solid var(--teal); outline-offset: 2px; }
   [hidden] { display: none !important; }
 
   @media (max-width: 900px) {

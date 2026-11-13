@@ -19,7 +19,7 @@ export function createApi(base) {
 
   function form(photo, params) {
     const f = new FormData();
-    f.append('photo', photo);
+    (Array.isArray(photo) ? photo : [photo]).forEach((p, i) => f.append(i ? `photo${i}` : 'photo', p));
     if (params) f.append('params', JSON.stringify(params));
     return f;
   }

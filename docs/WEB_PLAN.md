@@ -37,6 +37,8 @@ web/  Astro estático                       backend/  Go (net/http) en Docker
 | 10 | Variante jaula original (`variant: cage`): foto en los domos ±Z, VPK de un solo archivo; corrección del formato de UV por LOD y diagnóstico `-lodtest` — [explicación](lessons/10-variantes.md) | 🟡 backend listo; falta prueba en el juego y decidir el preview en el sitio |
 | 11 | Más modelos 3D: esfera, dado, gema, moneda, huevo y medallones (solo los 6 sellos) (la esfera deformada, mismas UV y textura), selector en el sitio, plantillas de foto y textos más cortos — [explicación](lessons/11-formas.md) | 🟡 listo en el sitio; falta prueba en el juego |
 
+| 12 | Varias fotos, encuadre por sello y movimiento sobre el modelo — [explicación](lessons/12-varias-fotos.md) | 🟡 falta prueba en el juego |
+
 ## Pendientes / riesgos
 - Las actualizaciones de Deadlock pueden cambiar los archivos base. El sha256 lo detecta, y hay que volver a extraerlos y actualizar la imagen.
 - Hipótesis por verificar: las UV originales de la jaula también se leen como f16, lo que es necesario para la etapa 10.
