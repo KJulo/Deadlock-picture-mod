@@ -51,6 +51,7 @@ func main() {
 		alpha      = flag.Float64("color-alpha", d.ColorAlpha, "colour texture alpha (0 renders black)")
 		rough      = flag.Float64("roughness", d.Roughness, "roughness 0..1")
 		rotate     = flag.Float64("rotate", 0, "rotate the photo clockwise (degrees)")
+		turn       = flag.Float64("turn", 0, "turn the photo inside each seal, clockwise (degrees)")
 		downloads  = flag.Bool("downloads", false, "also copy the VPK to ~/Downloads/catmod_go.vpk")
 		install    = flag.Bool("install", false, "copy to Deadlock's addons/pak09_dir.vpk (restart the game)")
 		lodTest    = flag.Bool("lodtest", false, "diagnostic: each LOD shows a coloured band labelled 'LOD n' (no photo needed)")
@@ -71,7 +72,7 @@ func main() {
 	p.Shape = *shape
 	p.Variant, p.Layout, p.Center, p.Radius, p.Projection = *variant, *layout, [2]float64{*cx, *cy}, *radius, *projection
 	p.StickerDeg, p.RingDeg, p.Back = *stickerDeg, *ringDeg, *back
-	p.ColorAlpha, p.Roughness, p.RotationDeg = *alpha, *rough, *rotate
+	p.ColorAlpha, p.Roughness, p.RotationDeg, p.TurnDeg = *alpha, *rough, *rotate, *turn
 	var err error
 	if p.BgColor, err = hexColor(*bg); err != nil {
 		fail(err)

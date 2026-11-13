@@ -41,7 +41,8 @@ type Params struct {
 	Roughness   float64    `json:"roughness"`
 	Contrast    float64    `json:"contrast"`
 	Saturation  float64    `json:"saturation"`
-	RotationDeg float64    `json:"rotation_deg"`
+	RotationDeg float64    `json:"rotation_deg"` // turns the whole photo before anything else
+	TurnDeg     float64    `json:"turn_deg"`     // turns the photo inside each seal, clockwise as seen
 }
 
 // DefaultParams matches PhotoParams() in the python reference.
@@ -81,6 +82,8 @@ func (p Params) Validate() error {
 		return fmt.Errorf("%w: contrast and saturation must be within 0..3", ErrBadParams)
 	case !in(p.RotationDeg, -360, 360):
 		return fmt.Errorf("%w: rotation_deg must be within -360..360", ErrBadParams)
+	case !in(p.TurnDeg, -360, 360):
+		return fmt.Errorf("%w: turn_deg must be within -360..360", ErrBadParams)
 	}
 	return nil
 }
@@ -140,13 +143,26 @@ func sampleBilinear(m *RGB, x, y float64) [3]float64 {
 	return out
 }
 
+// photoPoint maps a seal's unit-disc point (sx right, sy up) to photo pixel coordinates: the
+// disc of radius p.Radius around p.Center, turned clockwise by p.TurnDeg.
+func photoPoint(photo *RGB, p Params) func(sx, sy float64) (x, y float64) {
+	w, h := float64(photo.W), float64(photo.H)
+	cx, cy, r := p.Center[0]*w, p.Center[1]*h, p.Radius*math.Min(w, h)
+	if p.TurnDeg == 0 { // keeps the default output byte-identical
+		return func(sx, sy float64) (float64, float64) { return cx + sx*r, cy - sy*r }
+	}
+	sin, cos := math.Sincos(p.TurnDeg * math.Pi / 180)
+	return func(sx, sy float64) (float64, float64) {
+		return cx + r*(sx*cos-sy*sin), cy - r*(sx*sin+sy*cos)
+	}
+}
+
 // SphereTexture renders the size×size RGBA texture; alpha = p.ColorAlpha everywhere.
 func SphereTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
-	w, h := float64(photo.W), float64(photo.H)
-	cx, cy, r := p.Center[0]*w, p.Center[1]*h, p.Radius*math.Min(w, h)
+	at := photoPoint(photo, p)
 	alpha := uint8(math.RoundToEven(p.ColorAlpha * 255))
 	out := image.NewNRGBA(image.Rect(0, 0, size, size))
 	front := sticker{vec{1, 0, 0}, vec{0, 0, 1}}
@@ -168,7 +184,8 @@ func SphereTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
 				if back && p.Back == "color" {
 					px = [3]float64{float64(p.BgColor[0]), float64(p.BgColor[1]), float64(p.BgColor[2])}
 				} else {
-					px = sampleBilinear(photo, cx+sx*r, cy-sy*r)
+					x, y := at(sx, sy)
+					px = sampleBilinear(photo, x, y)
 				}
 			} else {
 				px = texel(d)
@@ -186,8 +203,7 @@ func SphereTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
 // stickerTexel returns the colour of direction d for the sticker layouts (cube6, twice): the
 // photo inside the nearest sticker, then its ring, then the background.
 func stickerTexel(photo *RGB, p Params) func(d vec) [3]float64 {
-	w, h := float64(photo.W), float64(photo.H)
-	cx, cy, r := p.Center[0]*w, p.Center[1]*h, p.Radius*math.Min(w, h)
+	at := photoPoint(photo, p)
 	R, ring := p.StickerDeg*math.Pi/180, p.RingDeg*math.Pi/180
 	stickers := layouts[p.Layout]
 	return func(d vec) [3]float64 {
@@ -201,7 +217,8 @@ func stickerTexel(photo *RGB, p Params) func(d vec) [3]float64 {
 		sx, sy, ang := discCoords(d, stickers[best], R, p.Projection)
 		switch {
 		case ang <= R:
-			return sampleBilinear(photo, cx+sx*r, cy-sy*r)
+			x, y := at(sx, sy)
+			return sampleBilinear(photo, x, y)
 		case ang <= R+ring:
 			return [3]float64{float64(p.RingColor[0]), float64(p.RingColor[1]), float64(p.RingColor[2])}
 		default:

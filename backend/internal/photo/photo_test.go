@@ -322,3 +322,18 @@ func TestSingleLayoutSizeFollowsStickerDeg(t *testing.T) {
 		}
 	}
 }
+
+// A clockwise quarter turn brings the top of the photo disc to the seal's right edge.
+func TestTurnRotatesThePhotoClockwise(t *testing.T) {
+	p := DefaultParams()
+	p.TurnDeg = 90
+	m := &RGB{W: 100, H: 100}
+	x, y := photoPoint(m, p)(1, 0) // seal's right edge
+	if math.Abs(x-50) > 1e-9 || math.Abs(y-0) > 1e-9 {
+		t.Fatalf("right edge samples (%g, %g), want the top of the disc (50, 0)", x, y)
+	}
+	p.TurnDeg = 400
+	if p.Validate() == nil {
+		t.Fatal("turn_deg 400 accepted")
+	}
+}

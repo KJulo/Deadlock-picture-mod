@@ -31,8 +31,7 @@ var CageDiscs = []Disc{
 // an optional ring of RingDeg/StickerDeg of the radius.
 func PaintDiscs(dst *image.NRGBA, photo *RGB, p Params, discs []Disc) {
 	size := dst.Bounds().Dx()
-	w, h := float64(photo.W), float64(photo.H)
-	cx, cy, r := p.Center[0]*w, p.Center[1]*h, p.Radius*math.Min(w, h)
+	at := photoPoint(photo, p)
 	ring := p.RingDeg / p.StickerDeg
 	for _, d := range discs {
 		// inverse of the 2x2 map: texture offset -> (x, y)
@@ -58,7 +57,8 @@ func PaintDiscs(dst *image.NRGBA, photo *RGB, p Params, discs []Disc) {
 					px = [3]float64{float64(p.RingColor[0]), float64(p.RingColor[1]), float64(p.RingColor[2])}
 				} else {
 					s := 1 / (1 - ring) // the photo fills the disc inside the ring
-					px = sampleBilinear(photo, cx+sx*s*r, cy-sy*s*r)
+					x, y := at(sx*s, sy*s)
+					px = sampleBilinear(photo, x, y)
 				}
 				i := dst.PixOffset(tx, ty)
 				for k := 0; k < 3; k++ {
