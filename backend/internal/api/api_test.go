@@ -321,3 +321,26 @@ func TestGzip(t *testing.T) {
 		}
 	}
 }
+
+func TestMultipartMultiplePhotos(t *testing.T) {
+	data := testPhoto(t)
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	for _, name := range []string{"photo", "photo1"} {
+		w, err := mw.CreateFormFile(name, "photo.png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mw.WriteField("params", `{"seals":[{"photo":1,"dir":[1,0,0],"center":[0.5,0.5],"radius":0.5}]}`)
+	mw.Close()
+	req := httptest.NewRequest(http.MethodPost, "/api/texture?size=256", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	rec := do(newServer(t, fakeBuild(nil)), req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("texture: %d %s", rec.Code, rec.Body.String())
+	}
+}

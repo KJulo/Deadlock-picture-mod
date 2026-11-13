@@ -44,7 +44,7 @@ function placeholderTexture() {
   return tex;
 }
 
-export function createViewer(canvas, { mesh, background = 0x14181c } = {}) {
+export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, onMove } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -122,6 +122,35 @@ export function createViewer(canvas, { mesh, background = 0x14181c } = {}) {
     old.dispose();
   }
 
+  const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
+  let dirs = [], selected = 0, sealAngle = 40, movable = false, dragging = false;
+  const marker = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x29ffc9, depthTest: false }));
+  marker.renderOrder = 100; orb.add(marker);
+  function setSeals(values, index, angle, canMove) {
+    dirs = values; selected = index; sealAngle = angle; movable = canMove;
+    marker.visible = movable && !!dirs[index];
+    if (!marker.visible) return;
+    const d = new THREE.Vector3(dirs[index][0], dirs[index][2], -dirs[index][1]).normalize();
+    const tangent = new THREE.Vector3().crossVectors(d, Math.abs(d.y) > 0.99 ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0)).normalize();
+    const bitangent = new THREE.Vector3().crossVectors(d,tangent).normalize();
+    const a = angle * Math.PI / 180, points = [];
+    for (let i=0;i<64;i++) { const t=i*2*Math.PI/64; points.push(d.clone().multiplyScalar(Math.cos(a)).addScaledVector(tangent,Math.sin(a)*Math.cos(t)).addScaledVector(bitangent,Math.sin(a)*Math.sin(t)).multiplyScalar(radius*1.02)); }
+    marker.geometry.dispose(); marker.geometry = new THREE.BufferGeometry().setFromPoints(points);
+  }
+  function hit(e) {
+    const rect = canvas.getBoundingClientRect(); mouse.set((e.clientX-rect.left)/rect.width*2-1, -(e.clientY-rect.top)/rect.height*2+1);
+    raycaster.setFromCamera(mouse,camera); const point = raycaster.intersectObject(body)[0]?.point; if (!point) return null;
+    const p = orb.worldToLocal(point.clone()).normalize(); return [p.x,-p.z,p.y];
+  }
+  canvas.addEventListener('pointerdown', e => {
+    if (!movable || e.button !== 0) return; const d = hit(e); if (!d) return;
+    let best = -1, score = Math.cos(sealAngle*Math.PI/180);
+    dirs.forEach((v,i) => { const dot = d[0]*v[0]+d[1]*v[1]+d[2]*v[2]; if (dot > score) { score = dot; best = i; } });
+    if (best < 0) return; e.stopImmediatePropagation(); e.preventDefault(); dragging = true; controls.enabled = false; canvas.setPointerCapture(e.pointerId); onSelect?.(best);
+  }, true);
+  canvas.addEventListener('pointermove', e => { if (!dragging) return; e.stopImmediatePropagation(); const d = hit(e); if (d) onMove?.(d,false); }, true);
+  function endDrag(e) { if (!dragging) return; e.stopImmediatePropagation(); dragging = false; controls.enabled = true; const d = hit(e) || dirs[selected]; onMove?.(d,true); }
+  canvas.addEventListener('pointerup',endDrag,true); canvas.addEventListener('pointercancel',endDrag,true);
   const options = { spin: true, effects: true, pulse: true, outline: true };
   function set(opts) { Object.assign(options, opts); }
 
@@ -142,7 +171,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c } = {}) {
     timer.update(timestamp);
     const dt = Math.min(timer.getDelta(), 0.1);
     time += dt;
-    if (options.spin) { orb.rotation.y += dt * 0.35; orb.rotation.x = Math.sin(time * 0.4) * 0.35; }
+    if (options.spin && !dragging) { orb.rotation.y += dt * 0.35; orb.rotation.x = Math.sin(time * 0.4) * 0.35; }
     material.uniforms.uTime.value = time;
     material.uniforms.uPulse.value = options.pulse ? 1 : 0;
     if (hull) hull.visible = options.outline;
@@ -154,7 +183,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c } = {}) {
   renderer.setAnimationLoop(frame);
 
   return {
-    setMesh, setTextureBlob, set,
+    setMesh, setTextureBlob, set, setSeals,
     material, // exposed for calibration (uniforms)
     snapshot: () => canvas.toDataURL('image/png'),
     dispose() { renderer.setAnimationLoop(null); renderer.dispose(); controls.dispose(); timer.dispose?.(); },

@@ -61,6 +61,7 @@ func main() {
 		MaxUploadBytes: int64(envInt(log, "MAX_UPLOAD_MB", 15)) << 20,
 		MaxConcurrent:  envInt(log, "MAX_CONCURRENT_BUILDS", 2),
 		QueueTimeout:   20 * time.Second,
+		MultiBuild:     func(data [][]byte, p photo.Params) (*build.Result, error) { return build.ModPhotos(tpl, data, p) },
 		AllowedOrigins: strings.Split(env("ALLOWED_ORIGINS", "http://localhost:4321"), ","),
 		Logger:         log,
 	}
