@@ -56,6 +56,9 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.enablePan = false;
+  // Right button rotates too, so turning the object never grabs a seal by mistake
+  // (the left button on a seal moves it; see pointerdown below).
+  controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
   let userMoved = false;
   controls.addEventListener('start', () => { userMoved = true; });
 
@@ -143,7 +146,8 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
     const p = orb.worldToLocal(point.clone()).normalize(); return [p.x,-p.z,p.y];
   }
   canvas.addEventListener('pointerdown', e => {
-    if (!movable || e.button !== 0) return; const d = hit(e); if (!d) return;
+    // Shift/Ctrl/⌘ + left click rotates as well (trackpads without a right button)
+    if (!movable || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) return; const d = hit(e); if (!d) return;
     let best = -1, score = Math.cos(sealAngle*Math.PI/180);
     dirs.forEach((v,i) => { const dot = d[0]*v[0]+d[1]*v[1]+d[2]*v[2]; if (dot > score) { score = dot; best = i; } });
     if (best < 0) return; e.stopImmediatePropagation(); e.preventDefault(); dragging = true; controls.enabled = false; canvas.setPointerCapture(e.pointerId); onSelect?.(best);
@@ -197,6 +201,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
 
   return {
     setMesh, setTextureBlob, set, setSeals,
+    resetView() { userMoved = false; frameSphere(); },
     material, // exposed for calibration (uniforms)
     snapshot: () => canvas.toDataURL('image/png'),
     cover,
