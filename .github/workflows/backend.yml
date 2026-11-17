@@ -1,0 +1,23 @@
+# Go backend tests on every push / PR that touches the backend. The game files are not in the
+# repo, so the tests that need them skip themselves; everything else (goldens included) runs.
+name: backend
+on:
+  push:
+    paths: ["backend/**", "testdata/**", ".github/workflows/backend.yml"]
+  pull_request:
+    paths: ["backend/**", "testdata/**", ".github/workflows/backend.yml"]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test -race ./...
