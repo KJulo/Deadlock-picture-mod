@@ -103,6 +103,9 @@ const es = {
     bad_shape: 'Modelo 3D desconocido.',
     bad_request: 'No se pudo leer el envío.',
     missing_photo: 'Falta la foto.',
+    bad_lod: 'Nivel de detalle no válido.',
+    bad_size: 'Tamaño de vista previa no válido.',
+    no_preview: 'La vista previa no está disponible para este modelo.',
     internal: 'Error interno del servidor.',
   },
   install: {
@@ -224,6 +227,9 @@ const en: Dict = {
     bad_shape: 'Unknown 3D model.',
     bad_request: 'The upload could not be read.',
     missing_photo: 'The photo is missing.',
+    bad_lod: 'Invalid level of detail.',
+    bad_size: 'Invalid preview size.',
+    no_preview: 'The preview is not available for this model.',
     internal: 'Internal server error.',
   },
   install: {

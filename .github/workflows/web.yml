@@ -1,0 +1,28 @@
+# Astro site: build it and run its tests on every push / PR that touches it. The i18n tests also
+# read backend/internal/api/api.go (every backend error code needs a translation), so changes
+# there run this workflow too.
+name: web
+on:
+  push:
+    paths: ["web/**", "backend/internal/api/**", ".github/workflows/web.yml"]
+  pull_request:
+    paths: ["web/**", "backend/internal/api/**", ".github/workflows/web.yml"]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json # the pnpm version comes from its packageManager field
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
