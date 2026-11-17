@@ -17,7 +17,7 @@ web/  Astro estático                       backend/  Go (net/http) en Docker
 └─ shader aproximado al NPR del juego
 ```
 
-- **Monorepo, sin Turborepo:** son tres toolchains distintos (Go, Astro/npm, Python). Un `Makefile` en la raíz basta. En GitHub Actions se usan filtros por carpeta (`paths:`) para que cada parte construya solo lo suyo.
+- **Monorepo, sin Turborepo:** son tres toolchains distintos (Go, Astro/pnpm, Python). Un `Makefile` en la raíz basta. En GitHub Actions se usan filtros por carpeta (`paths:`) para que cada parte construya solo lo suyo.
 - **`reference/` (Python) es la fuente de verdad.** Cada módulo de Go se valida contra golden files generados por el Python (`make golden` → `testdata/`). En `testdata/` solo van metadatos y salidas sintéticas, nunca contenido de Valve.
 - **URL del usuario:** la del frontend. La de Cloud Run (`https://catmod-api-<n>.<región>.run.app`) solo la usa el frontend por debajo.
 
