@@ -52,11 +52,11 @@ deploy:
 
 # API on :8080 and the Astro site on :4321 (Ctrl+C stops both)
 web:
-	@test -d web/node_modules || (cd web && npm install)
+	@test -d web/node_modules || (cd web && pnpm install)
 	@trap 'kill 0' INT TERM EXIT; \
 	  (cd backend && go run ./cmd/server) & \
-	  (cd web && npm run dev) & \
+	  (cd web && pnpm dev) & \
 	  wait
 
 web-build:
-	cd web && npm run build
+	cd web && pnpm build
