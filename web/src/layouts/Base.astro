@@ -1,10 +1,12 @@
 ---
-import '@fontsource/limelight/400.css';
-import '@fontsource/cormorant-garamond/400.css';
-import '@fontsource/cormorant-garamond/400-italic.css';
-import '@fontsource/cormorant-garamond/600.css';
-import '@fontsource/josefin-sans/400.css';
-import '@fontsource/josefin-sans/600.css';
+import '@fontsource/grenze/600.css';
+import '@fontsource/grenze/800.css';
+import '@fontsource/barlow-condensed/600.css';
+import '@fontsource/barlow-condensed/700.css';
+import '@fontsource/jost/300.css';
+import '@fontsource/jost/400.css';
+import '@fontsource/jost/400-italic.css';
+import '@fontsource/jost/500.css';
 import '../styles/global.css';
 import { SITE } from '../site.js';
 import { languages, defaultLang, useDict, fmt, homeUrl, type Lang } from '../i18n/ui';
@@ -21,7 +23,7 @@ const { title = fmt(t.meta.title, { name: SITE.name }) } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={t.meta.description} />
-    <meta name="theme-color" content="#0e1719" />
+    <meta name="theme-color" content="#121110" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     {Astro.site && /* hreflang needs absolute URLs: set `site` in astro.config.mjs to enable */ (
       [...(Object.keys(languages) as Lang[]), 'x-default'].map((l) => (

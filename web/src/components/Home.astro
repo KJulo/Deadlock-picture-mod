@@ -2,7 +2,7 @@
 // The whole page; src/pages/index.astro (es) and src/pages/en/index.astro render it.
 import Base from '../layouts/Base.astro';
 import SiteHeader from './SiteHeader.astro';
-import Hero from './Hero.astro';
+import Torn from './Torn.astro';
 import Workshop from './Workshop.astro';
 import Install from './Install.astro';
 import Faq from './Faq.astro';
@@ -11,10 +11,13 @@ import SiteFooter from './SiteFooter.astro';
 <Base>
   <SiteHeader />
   <main>
-    <Hero />
-    <Workshop />
+    <div class="band"><Workshop /></div>
+    <Torn flip />
     <Install />
     <Faq />
   </main>
   <SiteFooter />
 </Base>
+<style>
+  .band { background: var(--ink-0); }
+</style>

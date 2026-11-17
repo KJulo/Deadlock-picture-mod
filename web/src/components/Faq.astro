@@ -3,7 +3,7 @@ import { useDict } from '../i18n/ui';
 const t = useDict(Astro.currentLocale);
 ---
 <section id="preguntas" class="faq wrap" aria-labelledby="preguntas-title">
-  <h2 id="preguntas-title">{t.faq.title}</h2>
+  <h2 id="preguntas-title" class="section-title">{t.faq.title}</h2>
   <div class="list">
     {t.faq.items.map(([q, a]) => (
       <details>
@@ -14,21 +14,20 @@ const t = useDict(Astro.currentLocale);
   </div>
 </section>
 <style>
-  .faq { padding-block: 32px; }
-  h2 { text-align: center; font-size: clamp(1.8rem, 3vw, 2.4rem); margin-bottom: 22px; color: var(--parchment); }
-  .list { max-width: 760px; margin: 0 auto; border-top: 1px solid var(--brass-dark); }
-  details { border-bottom: 1px solid var(--brass-dark); }
+  .faq { padding-block: 40px 24px; max-width: 860px; }
+  .list { display: grid; gap: 8px; }
+  details { background: var(--ink-2); border: 1px solid var(--line); border-left: 3px solid var(--gold-dim); transition: border-color 0.2s; }
+  details[open], details:hover { border-left-color: var(--gold); }
   summary {
-    cursor: pointer; list-style: none; padding: 16px 36px 16px 4px; position: relative;
-    font-size: 1.25rem; font-weight: 600; color: var(--parchment);
+    cursor: pointer; list-style: none; padding: 15px 52px 15px 20px; position: relative;
+    font: 600 1.25rem/1.25 var(--font-display); color: var(--cream);
   }
   summary::-webkit-details-marker { display: none; }
   summary::after {
-    content: ''; position: absolute; right: 10px; top: 50%; width: 10px; height: 10px;
-    border: solid var(--brass-bright); border-width: 0 1.5px 1.5px 0; transform: translateY(-70%) rotate(45deg);
-    transition: transform 0.2s;
+    content: '+'; position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+    font: 600 1.6rem/1 var(--font-caps); color: var(--gold); transition: transform 0.2s;
   }
-  details[open] summary::after { transform: translateY(-30%) rotate(-135deg); }
-  summary:hover { color: var(--soul); }
-  details p { margin: 0 0 18px 4px; color: var(--parchment-3); max-width: 65ch; }
+  details[open] summary::after { transform: translateY(-50%) rotate(45deg); }
+  summary:hover { color: var(--gold-bright); }
+  details p { margin: 0; padding: 0 20px 18px; color: var(--cream-2); max-width: 68ch; }
 </style>

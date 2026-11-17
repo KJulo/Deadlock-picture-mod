@@ -1,0 +1,18 @@
+---
+// Ragged paper edge between two bands, as on playdeadlock.com's update pages.
+// `fill` is the colour of the band it leads into; `flip` puts it at the bottom of a band.
+interface Props { fill?: string; flip?: boolean }
+const { fill = 'var(--ink-0)', flip = false } = Astro.props;
+---
+<div class:list={['torn', { flip }]} style={`--fill:${fill}`} aria-hidden="true">
+  <svg viewBox="0 0 1440 48" preserveAspectRatio="none">
+    <path d="M0 48V30l38 -12l43 16l21 -18l24 9l21 5l31 -15l23 12l44 -11l33 0l45 -1l25 6l21 11l43 -17l32 0l26 8l44 -5l25 14l37 -1l29 -14l30 8l24 6l22 1l21 1l31 -4l45 -5l47 8l47 -7l37 -4l29 0l23 11l37 -2l49 -6l46 -1l22 -6l50 10l28 -3l27 5l44 -14l22 16l38 -7l40 9l49 -1l27 -16V48Z" />
+    <path class="crumbs" d="M212 24l4-2 1 3zM640 16l5-1-2 4zM1018 22l3-3 2 3zM1290 18l4 1-3 3zM420 26l3-2 1 3z" />
+  </svg>
+</div>
+<style>
+  .torn { height: clamp(22px, 3vw, 44px); margin-bottom: -1px; position: relative; z-index: 1; }
+  .torn.flip { transform: scaleY(-1); margin: -1px 0 0; }
+  svg { width: 100%; height: 100%; }
+  path { fill: var(--fill); }
+</style>
