@@ -9,7 +9,7 @@ import "math"
 type Shape func(d Vec3) float64
 
 // ShapeNames lists the shapes in display order; "sphere" is the plain sphere.
-var ShapeNames = []string{"sphere", "cube", "gem", "coin", "egg"}
+var ShapeNames = []string{"sphere", "cube", "gem", "coin", "egg", "d20", "capsule", "heart", "brilliant"}
 
 // ShapeByName returns the shape for a name in ShapeNames.
 func ShapeByName(name string) (Shape, bool) {
@@ -22,6 +22,14 @@ func ShapeByName(name string) (Shape, bool) {
 		return superellipsoid(0.94, 0.94, 1, 1.7, 1.7), true
 	case "coin": // a thick disc lying flat: photos on both faces
 		return superellipsoid(1, 1, 0.46, 0.25, 1), true
+	case "d20":
+		return d20Shape, true
+	case "capsule":
+		return capsuleShape, true
+	case "heart":
+		return heartShape, true
+	case "brilliant":
+		return brilliantShape, true
 	case "egg":
 		ellipsoid := superellipsoid(0.8, 0.8, 0.92, 1, 1)
 		return func(d Vec3) float64 { return ellipsoid(d) * (1 + 0.08*d[2]) }, true
