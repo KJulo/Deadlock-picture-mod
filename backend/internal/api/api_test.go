@@ -125,7 +125,7 @@ func TestMesh(t *testing.T) {
 		t.Fatal(err)
 	}
 	n := len(m.Positions) / 3
-	if n != 77*39 || len(m.UVs) != 2*n || len(m.Indices) != 3*2*76*38 {
+	if n != 6*23*23 || len(m.UVs) != 2*n || len(m.Indices) != 3*12*22*22 {
 		t.Fatalf("got %d vertices, %d uvs, %d indices", n, len(m.UVs), len(m.Indices))
 	}
 	for _, i := range m.Indices {
@@ -141,7 +141,7 @@ func TestMesh(t *testing.T) {
 	h := newServer(t, fakeBuild(nil))
 	rec = do(h, httptest.NewRequest("GET", "/api/mesh?lod=3", nil))
 	json.Unmarshal(rec.Body.Bytes(), &m)
-	if rec.Code != 200 || len(m.Positions)/3 != 33*17 {
+	if rec.Code != 200 || len(m.Positions)/3 != 6*10*10 {
 		t.Errorf("lod 3: %d, %d vertices", rec.Code, len(m.Positions)/3)
 	}
 	if rec := do(h, httptest.NewRequest("GET", "/api/mesh?lod=9", nil)); rec.Code != 400 {

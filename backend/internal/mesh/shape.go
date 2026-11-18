@@ -101,7 +101,7 @@ func ShapedSphere(radius float64, g Grid, shape Shape) Sphere {
 		return s
 	}
 	at := func(th, ph float64) Vec3 {
-		d := Vec3{math.Sin(th) * math.Cos(ph), math.Sin(th) * math.Sin(ph), math.Cos(th)}
+		d, _, _ := (Equirect{}).TexelDir(ph/(2*math.Pi), th/math.Pi)
 		return d.Scale(shape(d))
 	}
 	theta := sampleCurve(g.NV, 0, math.Pi, func(th float64) Vec3 { return at(th, math.Pi/4) })
