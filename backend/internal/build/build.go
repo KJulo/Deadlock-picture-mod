@@ -109,8 +109,8 @@ func Geometry(p photo.Params) mesh.Geometry {
 		return mesh.MedallionGeometry(vmdl.SphereRadius, p.MedallionRad())
 	}
 	shape, _ := mesh.ShapeByName(p.Shape)
-	if mesh.UseCubeAtlas(shape) {
-		return mesh.CubeSphereGeometry(vmdl.SphereRadius, shape)
+	if power := mesh.AtlasPowerByName(p.Shape); power != 0 {
+		return mesh.CubeSphereGeometryWithPower(vmdl.SphereRadius, shape, power)
 	}
 	return mesh.SphereGeometry(vmdl.SphereRadius, shape)
 }

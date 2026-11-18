@@ -41,3 +41,24 @@ func TestReliefBevel(t *testing.T) {
 		t.Fatal("NaN relief accepted")
 	}
 }
+
+func TestCubeReliefUsesAtlasFrame(t *testing.T) {
+	p := DefaultParams()
+	p.Shape = "cube"
+	p.Layout = "single"
+	p.Relief = 1
+	p.StickerDeg = 30
+	p.RingDeg = 10
+	if mesh.AtlasPowerByName(p.Shape) == 0 {
+		t.Fatal("cube did not select atlas")
+	}
+	n, _, err := ReliefTextures(p, 720)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, v := (mesh.CubeAtlas{}).VertexUV(0, .5+32.0/90, .5)
+	c := n.NRGBAAt(int(u*720), int(v*720))
+	if c.R >= 128 {
+		t.Fatalf("incorrect relief tangent: %+v", c)
+	}
+}

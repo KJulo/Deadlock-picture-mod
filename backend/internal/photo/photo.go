@@ -248,8 +248,7 @@ func SphereTextureEquirect(photo *RGB, p Params, size int) (*image.NRGBA, error)
 
 // SphereTexturePhotos renders freely placed seals using the nearest centre; the first wins ties.
 func SphereTexturePhotos(photos []*RGB, p Params, size int) (*image.NRGBA, error) {
-	shape, _ := mesh.ShapeByName(p.Shape)
-	return sphereTexturePhotos(photos, p, size, mesh.UseCubeAtlas(shape))
+	return sphereTexturePhotos(photos, p, size, mesh.AtlasPowerByName(p.Shape) != 0)
 }
 
 func sphereTexturePhotos(photos []*RGB, p Params, size int, atlas bool) (*image.NRGBA, error) {

@@ -6,9 +6,6 @@ import (
 	"math"
 )
 
-// UseCubeAtlas chooses the measured atlas path; shaped surfaces keep adaptive sampling.
-func UseCubeAtlas(shape Shape) bool { return shape == nil }
-
 // CubeAtlas maps six equiangular cube faces to square islands in a 3 by 2 atlas.
 // Eight texels at the native 2048 resolution surround each island for filtering.
 type CubeAtlas struct{}
@@ -58,6 +55,12 @@ func (Equirect) TexelDir(u, v float64) (Vec3, Vec3, bool) {
 
 // CubeSphere samples each island independently, duplicating cube edges for UV seams.
 func CubeSphere(radius float64, segments int, shape Shape) Sphere {
+	return CubeSphereWarped(radius, segments, shape, 1)
+}
+
+// CubeSphereWarped concentrates samples near face edges when power is below one.
+// The UV mapping itself is unchanged.
+func CubeSphereWarped(radius float64, segments int, shape Shape, power float64) Sphere {
 	var s Sphere
 	a := CubeAtlas{}
 	at := func(u, v float64) Vec3 {
@@ -71,7 +74,8 @@ func CubeSphere(radius float64, segments int, shape Shape) Sphere {
 		base := uint32(len(s.Pos))
 		for j := 0; j <= segments; j++ {
 			for i := 0; i <= segments; i++ {
-				u, v := a.VertexUV(face, float64(i)/float64(segments), float64(j)/float64(segments))
+				warp := func(x float64) float64 { z := 2*x - 1; return (1 + math.Copysign(math.Pow(math.Abs(z), power), z)) / 2 }
+				u, v := a.VertexUV(face, warp(float64(i)/float64(segments)), warp(float64(j)/float64(segments)))
 				d, t, _ := a.TexelDir(u, v)
 				n := d
 				if shape != nil {
@@ -107,6 +111,15 @@ func CubeSphere(radius float64, segments int, shape Shape) Sphere {
 
 // CubeSphereGeometry packs the largest atlas grid that fits the fixed LOD budgets.
 func CubeSphereGeometry(radius float64, shape Shape) Geometry {
+	power := AtlasPower(shape)
+	if power == 0 {
+		power = 1
+	}
+	return CubeSphereGeometryWithPower(radius, shape, power)
+}
+
+// CubeSphereGeometryWithPower builds an atlas mesh with the chosen sampling exponent.
+func CubeSphereGeometryWithPower(radius float64, shape Shape, power float64) Geometry {
 	return func(vertexCount, indexCount int, uv UVFormat, remap UVRemap) (Buffers, error) {
 		segments := 0
 		for n := 1; 6*(n+1)*(n+1) <= vertexCount && 36*n*n <= indexCount; n++ {
@@ -115,7 +128,7 @@ func CubeSphereGeometry(radius float64, shape Shape) Geometry {
 		if segments == 0 {
 			return Buffers{}, fmt.Errorf("mesh: budget too small for cube atlas")
 		}
-		s := CubeSphere(radius, segments, shape)
+		s := CubeSphereWarped(radius, segments, shape, power)
 		vb := make([]byte, vertexCount*VertexSize)
 		for k, p := range s.Pos {
 			v := vb[k*VertexSize : (k+1)*VertexSize]

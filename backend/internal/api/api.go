@@ -69,8 +69,8 @@ func New(cfg Config, b BuildFunc) (*Server, error) {
 		shape, _ := mesh.ShapeByName(name)
 		for lod := range vmdl.LODs {
 			geom := mesh.SphereGeometry(vmdl.SphereRadius, shape)
-			if mesh.UseCubeAtlas(shape) {
-				geom = mesh.CubeSphereGeometry(vmdl.SphereRadius, shape)
+			if power := mesh.AtlasPowerByName(name); power != 0 {
+				geom = mesh.CubeSphereGeometryWithPower(vmdl.SphereRadius, shape, power)
 			}
 			m, err := meshJSON(lod, name, geom)
 			if err != nil {
