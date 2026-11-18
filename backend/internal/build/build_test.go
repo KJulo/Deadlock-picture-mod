@@ -149,3 +149,26 @@ func TestCageVariant(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Zero relief must retain the original constant texture path byte for byte.
+func TestZeroReliefMatchesOriginal(t *testing.T) {
+	tpl := loadTemplates(t)
+	data, err := os.ReadFile(filepath.Join(repoRoot, "testdata", "photo_input.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := photo.DefaultParams()
+	got, err := Mod(tpl, data, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := ModFromTexture(tpl, got.Texture, Geometry(p), p.Roughness)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range original.Files {
+		if sha(got.Files[path]) != sha(want) {
+			t.Errorf("%s differs with zero relief", path)
+		}
+	}
+}

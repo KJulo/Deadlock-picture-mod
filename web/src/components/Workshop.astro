@@ -149,6 +149,10 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
             <span class="caps">{w.ringWidth}</span>
             <input type="range" id="ring_deg" min="0" max="8" step="0.5" value="3" />
           </label>
+          <label class="range">
+            <span class="caps">{w.relief}</span>
+            <input type="range" id="relief" min="0" max="1" step="0.05" value="0" />
+          </label>
         </div>
       </li>
 
@@ -334,6 +338,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
       turn_deg: frame.turn,
       sticker_deg: +$<HTMLInputElement>('sticker_deg').value,
       ring_deg: +$<HTMLInputElement>('ring_deg').value,
+      relief: +$<HTMLInputElement>('relief').value,
       bg_color: hex(bgCustom ?? checked('bg') ?? '#18788c'),
       ring_color: hex(checked('ring') ?? '#ebebeb'),
     };
@@ -344,10 +349,18 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     if (!photo || !viewer) return;
     if (size === 2048 && !restoring) scheduleCheckpoint();
     inflight?.abort();
-    inflight = new AbortController();
+    const request = inflight = new AbortController();
+    const files = isWrap() ? [photo] : uniquePhotos(), values = params();
     status(msg('rendering'));
     try {
-      await viewer.setTextureBlob(await api.texture(isWrap() ? [photo] : uniquePhotos(), params(), size, inflight.signal));
+      const [color, normal] = await Promise.all([
+        api.texture(files, values, size, request.signal),
+        values.relief > 0 ? api.normal(files, values, size, request.signal) : Promise.resolve(null),
+      ]);
+      if (request.signal.aborted) return;
+      await viewer.setTextureBlob(color);
+      if (request.signal.aborted) return;
+      await viewer.setNormalBlob(normal);
       status('');
     } catch (e: any) {
       if (e.name !== 'AbortError') status(errorText(e), true);
@@ -377,7 +390,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     if (isMedallions() !== wasMedallions) resetSeals();
     syncLayout();
     reloadMesh();
-    if (isMedallions() !== wasMedallions) { if (photo) later(); else showSample(); }
+    if (isMedallions() !== wasMedallions || +$<HTMLInputElement>('relief').value > 0) { if (photo) later(); else showSample(); }
     wasMedallions = isMedallions();
     scheduleCheckpoint();
   }));
@@ -391,6 +404,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     document.querySelectorAll<HTMLInputElement>('input[name="bg"]').forEach((r) => (r.checked = false));
     later();
   });
+  $('relief').addEventListener('input', later);
   let meshTimer = 0;
   for (const id of ['sticker_deg', 'ring_deg']) $(id).addEventListener('input', () => {
     later();
@@ -574,7 +588,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   // design. Undo and redo swap snapshots; reset goes back to the first one with the current photo.
   type Snapshot = {
     seals: Seal[]; selected: number; shape?: string; layout?: string; bg?: string; bgCustom: string | null;
-    ring?: string; sticker: string; stickerMax: string; ringDeg: string;
+    ring?: string; sticker: string; stickerMax: string; ringDeg: string; relief: string;
   };
   const undoStack: Snapshot[] = [], redoStack: Snapshot[] = [];
   let current: Snapshot | null = null, initial: Snapshot | null = null, restoring = false, historyTimer = 0;
@@ -588,7 +602,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     const size = $<HTMLInputElement>('sticker_deg');
     return {
       seals: cloneSeals(seals), selected, shape: checked('shape'), layout: checked('layout'), bg: checked('bg'),
-      bgCustom, ring: checked('ring'), sticker: size.value, stickerMax: size.max, ringDeg: $<HTMLInputElement>('ring_deg').value,
+      bgCustom, ring: checked('ring'), sticker: size.value, stickerMax: size.max, ringDeg: $<HTMLInputElement>('ring_deg').value, relief: $<HTMLInputElement>('relief').value,
     };
   }
   function syncHistoryButtons() {
@@ -622,6 +636,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
       const size = $<HTMLInputElement>('sticker_deg');
       size.max = s.stickerMax; size.value = s.sticker;
       $<HTMLInputElement>('ring_deg').value = s.ringDeg;
+      $<HTMLInputElement>('relief').value = s.relief;
       wasMedallions = isMedallions();
       seals = cloneSeals(s.seals);
       syncLayout();

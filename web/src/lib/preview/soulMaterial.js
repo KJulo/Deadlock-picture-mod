@@ -13,6 +13,8 @@ export function createSoulMaterial(map) {
   return new THREE.ShaderMaterial({
     uniforms: {
       uMap: { value: map },
+      uNormalMap: { value: null },
+      uHasNormal: { value: 0 },
       uTime: { value: 0 },
       uPulse: { value: 1 }, // 0 disables the self-illum pulse
       uLightDir: { value: new THREE.Vector3(0.45, 0.8, 0.4).normalize() },
@@ -30,6 +32,8 @@ export function createSoulMaterial(map) {
       uTransmissiveStrength: { value: 0.55 },
     },
     vertexShader: /* glsl */ `
+      attribute vec3 tangentDir;
+      varying vec3 vTangent;
       varying vec2 vUv;
       varying vec3 vNormal;
       varying vec3 vWorldPos;
@@ -38,10 +42,13 @@ export function createSoulMaterial(map) {
         vec4 world = modelMatrix * vec4(position, 1.0);
         vWorldPos = world.xyz;
         vNormal = normalize(mat3(modelMatrix) * normal);
+        vTangent = normalize(mat3(modelMatrix) * tangentDir);
         gl_Position = projectionMatrix * viewMatrix * world;
       }`,
     fragmentShader: /* glsl */ `
-      uniform sampler2D uMap;
+      uniform sampler2D uMap, uNormalMap;
+      uniform float uHasNormal;
+      varying vec3 vTangent;
       uniform float uTime, uPulse, uToon, uRoughness, uSelfIllumAmp, uSelfIllumFreq, uFresnelExp;
       uniform float uTransmissiveStrength;
       uniform vec3 uLightDir, uLightColor, uSkyColor, uGroundColor;
@@ -52,6 +59,12 @@ export function createSoulMaterial(map) {
       void main() {
         vec3 albedo = texture2D(uMap, vUv).rgb;          // sRGB texture -> linear by the GPU
         vec3 N = normalize(vNormal);
+        if (uHasNormal > 0.5) {
+          vec2 xy = (texture2D(uNormalMap, vUv).rg * 255.0 - 128.0) / 127.0;
+          vec3 T = normalize(vTangent - N * dot(N, vTangent));
+          vec3 B = cross(N, T);
+          N = normalize(T * xy.x + B * xy.y + N * sqrt(max(0.0, 1.0 - dot(xy, xy))));
+        }
         vec3 V = normalize(cameraPosition - vWorldPos);
         vec3 L = normalize(uLightDir);
         float NdotL = dot(N, L);

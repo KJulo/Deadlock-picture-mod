@@ -175,3 +175,66 @@ func RebuildBC4Constant(template []byte, value byte) ([]byte, error) {
 	}
 	return replace(res, chain)
 }
+
+// RebuildBC4 encodes the red channel and its mip chain using BC4 blocks.
+func RebuildBC4(template []byte, img *image.NRGBA) ([]byte, error) {
+	info, res, err := ReadInfo(template)
+	if err != nil {
+		return nil, err
+	}
+	if info.Format != FormatBC4 {
+		return nil, fmt.Errorf("vtex: template format %d is not BC4", info.Format)
+	}
+	if img.Bounds().Dx() != info.Width || img.Bounds().Dy() != info.Height {
+		return nil, fmt.Errorf("vtex: image dimensions do not match template")
+	}
+	pix, w, h := img.Pix, info.Width, info.Height
+	var chain [][]byte
+	for _, size := range mipSizes(info) {
+		for w > size[0] || h > size[1] {
+			pix, w, h = halve(pix, w, h)
+		}
+		blocks := make([]byte, (w/4)*(h/4)*8)
+		out := 0
+		for y := 0; y < h; y += 4 {
+			for x := 0; x < w; x += 4 {
+				lo, hi := byte(255), byte(0)
+				var values [16]byte
+				for j := 0; j < 4; j++ {
+					for k := 0; k < 4; k++ {
+						v := pix[((y+j)*w+x+k)*4]
+						values[j*4+k] = v
+						lo = min(lo, v)
+						hi = max(hi, v)
+					}
+				}
+				blocks[out], blocks[out+1] = hi, lo
+				var palette [8]int
+				palette[0], palette[1] = int(hi), int(lo)
+				for k := 2; k < 8; k++ {
+					palette[k] = ((8-k)*int(hi) + (k-1)*int(lo)) / 7
+				}
+				var bits uint64
+				for k, v := range values {
+					best, delta := 0, 256
+					for j, p := range palette {
+						d := int(v) - p
+						if d < 0 {
+							d = -d
+						}
+						if d < delta {
+							best, delta = j, d
+						}
+					}
+					bits |= uint64(best) << uint(3*k)
+				}
+				for j := 0; j < 6; j++ {
+					blocks[out+2+j] = byte(bits >> uint(8*j))
+				}
+				out += 8
+			}
+		}
+		chain = append(chain, blocks)
+	}
+	return replace(res, chain)
+}

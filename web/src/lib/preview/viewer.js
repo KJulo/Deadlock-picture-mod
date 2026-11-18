@@ -23,7 +23,10 @@ export function geometryFromMesh(m) {
       nrm.set([x / len, z / len, -y / len], i * 3);
     }
   }
+  const tan = new Float32Array(n * 3);
+  if (m.tangents) for (let i = 0; i < n; i++) tan.set([m.tangents[i*3], m.tangents[i*3+2], -m.tangents[i*3+1]], i*3);
   const geo = new THREE.BufferGeometry();
+  geo.setAttribute('tangentDir', new THREE.BufferAttribute(tan, 3));
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
   geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(m.uvs), 2));
@@ -125,6 +128,14 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
     old.dispose();
   }
 
+  async function setNormalBlob(blob) {
+    if (!blob) { material.uniforms.uHasNormal.value = 0; return; }
+    const bitmap = await createImageBitmap(blob, { imageOrientation: 'none' });
+    const tex = new THREE.Texture(bitmap); tex.flipY = false; tex.needsUpdate = true;
+    material.uniforms.uNormalMap.value?.dispose();
+    material.uniforms.uNormalMap.value = tex; material.uniforms.uHasNormal.value = 1;
+  }
+
   const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
   let dirs = [], selected = 0, sealAngle = 40, movable = false, dragging = false;
   const marker = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x29ffc9, depthTest: false }));
@@ -200,7 +211,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   }
 
   return {
-    setMesh, setTextureBlob, set, setSeals,
+    setMesh, setTextureBlob, setNormalBlob, set, setSeals,
     resetView() { userMoved = false; frameSphere(); },
     material, // exposed for calibration (uniforms)
     snapshot: () => canvas.toDataURL('image/png'),
