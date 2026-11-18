@@ -36,6 +36,8 @@ Además están los **índices**: cada grupo de 3 números dice qué vértices fo
 - **`math.RoundToEven`:** redondea igual que numpy. Si se usara `math.Round`, algunos valores en la mitad exacta saldrían distintos al Python.
 
 ## Cómo sabemos que está bien
-- **`TestMatchesPythonReference`:** los buffers de los 4 LOD son **idénticos byte a byte** a los del Python (`testdata/mesh_buffers.bin.gz`). Esa es la versión que ya se ve perfecta en el juego.
+- **`TestMatchesPythonReference`:** los buffers de los 4 LOD coinciden byte a byte con el golden de Python, salvo las UV de los polos (`testdata/mesh_buffers.bin.gz`). Esa es la versión que ya se ve perfecta en el juego.
 - **Tests de ida y vuelta:** las normales y tangentes comprimidas, al descomprimirlas, vuelven con menos de 0.25° y 0.5° de error.
 - **Casos borde de `Float16`:** el redondeo en empates, los subnormales y el máximo.
+
+**Polos:** cada triángulo visible usa una copia del polo con la U en el centro de su columna; así se evita el zigzag de la textura. El golden antiguo conserva las UV anteriores de los polos, y el test sigue comparando exactamente los demás bytes.

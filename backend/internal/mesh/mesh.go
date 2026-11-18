@@ -177,6 +177,12 @@ func UVSphere(radius float64, g Grid) Sphere {
 			s.UV = append(s.UV, [2]float64{u, v})
 		}
 	}
+	// The real top triangle uses b (i+1); the real bottom triangle uses c (i).
+	// Give each of those pole copies the centre longitude of its column.
+	for i := 0; i < g.NU; i++ {
+		s.UV[i+1][0] = (float64(i) + 0.5) / float64(g.NU)
+		s.UV[g.NV*(g.NU+1)+i][0] = (float64(i) + 0.5) / float64(g.NU)
+	}
 	// Winding like the original model: cross(B-A, C-A) points outward. All (a,c,b) triangles
 	// first, then all (b,c,d), in the same order as the python reference.
 	row := uint32(g.NU + 1)
@@ -248,6 +254,9 @@ func BuildBuffers(vertexCount, indexCount int, radius float64, uv UVFormat, rema
 // BuildShapeBuffers is BuildBuffers for any Shape (nil = the sphere).
 func BuildShapeBuffers(vertexCount, indexCount int, radius float64, shape Shape, uv UVFormat, remap UVRemap) ([]byte, []uint32, Grid, error) {
 	g := SphereGrid(vertexCount, indexCount/3)
+	if shape != nil {
+		g = shapedGrid(vertexCount, indexCount/3)
+	}
 	if g.Vertices() > vertexCount || 3*g.Triangles() > indexCount {
 		return nil, nil, g, fmt.Errorf("mesh: budget %d vertices / %d indices too small", vertexCount, indexCount)
 	}

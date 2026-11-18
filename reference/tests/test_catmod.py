@@ -98,3 +98,13 @@ def test_uv_format_follows_each_lod_declaration():
         wrong = "f16" if fmt == "snorm" else "snorm"
         _, bad, _ = decode_lod(model, lod, wrong)     # the other format gives nonsense
         assert not (np.nanmin(bad) >= 0 and np.nanmax(bad) <= 1 and np.nanmax(bad) > 0.9), lod
+
+
+def test_pole_triangle_uv_centres():
+    nu, nv = 20, 10
+    for u0, u1 in [(0.0, 1.0), (0.5, 1.0)]:
+        _, uv, _, _, tris = uv_sphere(1, nu, nv, u0, u1)
+        for i in range(nu):
+            center = u0 + (u1 - u0) * (i + 0.5) / nu
+            assert uv[tris[nu * nv + i, 0], 0] == center
+            assert uv[tris[(nv - 1) * nu + i, 1], 0] == center
