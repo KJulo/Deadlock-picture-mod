@@ -84,7 +84,23 @@ func ModPhotos(t *Templates, photoData [][]byte, p photo.Params) (*Result, error
 	if err != nil {
 		return nil, err
 	}
-	return ModFromTexture(t, texture, Geometry(p), p.Roughness)
+	result, err := ModFromTexture(t, texture, Geometry(p), p.Roughness)
+	if err != nil || p.Relief == 0 {
+		return result, err
+	}
+	normal, ao, err := photo.ReliefTextures(p, info.Width)
+	if err != nil {
+		return nil, err
+	}
+	result.Files[templates.NormalRough.GamePath], err = vtex.RebuildBC7(t.NormalRough, normal, bc7.Linear)
+	if err != nil {
+		return nil, fmt.Errorf("normal/roughness texture: %w", err)
+	}
+	result.Files[templates.AO.GamePath], err = vtex.RebuildBC4(t.AO, ao)
+	if err != nil {
+		return nil, fmt.Errorf("AO texture: %w", err)
+	}
+	return result, nil
 }
 
 // Geometry returns the mesh for p.Shape (validated): a radial shape or the medallions.

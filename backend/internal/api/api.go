@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"image/jpeg"
+	"image/png"
 	"io"
 	"log/slog"
 	"math"
@@ -302,6 +303,19 @@ func (s *Server) texture(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 
+	if r.URL.Query().Get("map") == "normal" {
+		tex, _, err := photo.ReliefTextures(p, size)
+		if err != nil {
+			writeError(w, s.classify(r, err))
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-store")
+		if err := png.Encode(w, tex); err != nil {
+			s.cfg.Logger.ErrorContext(r.Context(), "normal PNG", "err", err)
+		}
+		return
+	}
 	imgs := make([]*photo.RGB, len(data))
 	for i, d := range data {
 		imgs[i], err = photo.Load(d, p)
@@ -399,7 +413,7 @@ func meshJSON(lodIndex int, name string, geom mesh.Geometry) ([]byte, error) {
 		return nil, err
 	}
 	vb, idx, n := b.Vertices, b.Indices, b.Verts
-	positions, normals, uvs := make([]float32, 0, n*3), make([]float32, 0, n*3), make([]float64, 0, n*2)
+	positions, normals, tangents, uvs := make([]float32, 0, n*3), make([]float32, 0, n*3), make([]float32, 0, n*3), make([]float64, 0, n*2)
 	for k := 0; k < n; k++ {
 		v := vb[k*mesh.VertexSize:]
 		for c := 0; c < 3; c++ {
@@ -407,15 +421,19 @@ func meshJSON(lodIndex int, name string, geom mesh.Geometry) ([]byte, error) {
 		}
 		frame := binary.LittleEndian.Uint32(v[16:])
 		nrm := mesh.UnpackNormal(frame>>12&1023, frame>>22&1023)
+		b1, b2 := mesh.FrisvadBasis(nrm)
+		angle := float64(frame>>1&2047) * 2 * math.Pi / 2047
+		tangent := b1.Scale(math.Cos(angle)).Add(b2.Scale(math.Sin(angle)))
 		for c := 0; c < 3; c++ {
 			normals = append(normals, float32(math.Round(nrm[c]*1e4)/1e4))
+			tangents = append(tangents, float32(tangent[c]))
 		}
 		uvs = append(uvs, lod.UV.Decode(binary.LittleEndian.Uint16(v[12:])),
 			lod.UV.Decode(binary.LittleEndian.Uint16(v[14:])))
 	}
 	return json.Marshal(map[string]any{
 		"lod": lodIndex, "shape": name, "uv_format": lod.UV.String(), "grid": []int{b.Grid.NU, b.Grid.NV}, "up": "z", "radius": vmdl.SphereRadius,
-		"positions": positions, "normals": normals, "uvs": uvs, "indices": idx[:3*b.Tris],
+		"positions": positions, "normals": normals, "tangents": tangents, "uvs": uvs, "indices": idx[:3*b.Tris],
 	})
 }
 

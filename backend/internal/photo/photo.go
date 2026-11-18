@@ -49,6 +49,7 @@ type Params struct {
 	Back        string     `json:"back"`        // wrap only: mirror | flip | color
 	ColorAlpha  float64    `json:"color_alpha"` // colour texture alpha; 0 renders black in game
 	Roughness   float64    `json:"roughness"`
+	Relief      float64    `json:"relief"`
 	Contrast    float64    `json:"contrast"`
 	Saturation  float64    `json:"saturation"`
 	RotationDeg float64    `json:"rotation_deg"` // turns the whole photo before anything else
@@ -88,6 +89,8 @@ func (p Params) Validate() error {
 		return fmt.Errorf("%w: ring_deg must be within 0..30", ErrBadParams)
 	case !in(p.ColorAlpha, 0, 1) || !in(p.Roughness, 0, 1):
 		return fmt.Errorf("%w: color_alpha and roughness must be within 0..1", ErrBadParams)
+	case !in(p.Relief, 0, 1):
+		return fmt.Errorf("%w: relief must be within 0..1", ErrBadParams)
 	case !in(p.Contrast, 0, 3) || !in(p.Saturation, 0, 3):
 		return fmt.Errorf("%w: contrast and saturation must be within 0..3", ErrBadParams)
 	case !in(p.RotationDeg, -360, 360):
@@ -153,6 +156,39 @@ var layouts = map[string][]sticker{
 	"twice": {{vec{1, 0, 0}, vec{0, 0, 1}}, {vec{-1, 0, 0}, vec{0, 0, 1}}},
 	// one seal whose size (sticker_deg, up to 90 = half the sphere) sets how much it covers
 	"single": {{vec{1, 0, 0}, vec{0, 0, 1}}},
+}
+
+// sphereDirection maps the centre of an equirectangular texel to a direction.
+func sphereDirection(u, v float64) vec {
+	th, ph := v*math.Pi, u*2*math.Pi
+	return vec{math.Sin(th) * math.Cos(ph), math.Sin(th) * math.Sin(ph), math.Cos(th)}
+}
+
+// nearestSticker applies the same first-wins tie rule for colour and relief.
+func nearestSticker(d vec, stickers []sticker) int {
+	best, bestCos := 0, math.Inf(-1)
+	for i, s := range stickers {
+		if c := d.dot(s.centre); c > bestCos {
+			best, bestCos = i, c
+		}
+	}
+	return best
+}
+
+func sealStickers(p Params) []sticker {
+	if len(p.Seals) == 0 {
+		return layouts[p.Layout]
+	}
+	stickers := make([]sticker, len(p.Seals))
+	for i, s := range p.Seals {
+		d := vec(s.Dir)
+		n := math.Sqrt(d.dot(d))
+		for k := range d {
+			d[k] /= n
+		}
+		stickers[i].centre = d
+	}
+	return stickers
 }
 
 // discCoords maps direction d into a sticker's unit disc (sx right, sy up; radius 1 at maxAngle)
@@ -224,10 +260,8 @@ func SphereTexturePhotos(photos []*RGB, p Params, size int) (*image.NRGBA, error
 	texel := stickerTexelPhotos(photos, p)
 
 	for row := 0; row < size; row++ {
-		th := (float64(row) + 0.5) / float64(size) * math.Pi
 		for col := 0; col < size; col++ {
-			ph := (float64(col) + 0.5) / float64(size) * 2 * math.Pi
-			d := vec{math.Sin(th) * math.Cos(ph), math.Sin(th) * math.Sin(ph), math.Cos(th)}
+			d := sphereDirection((float64(col)+0.5)/float64(size), (float64(row)+0.5)/float64(size))
 
 			var px [3]float64
 			if p.Layout == "wrap" {
@@ -300,12 +334,7 @@ func stickerTexelPhotos(photos []*RGB, p Params) func(d vec) [3]float64 {
 		}
 		R, ring := p.StickerDeg*math.Pi/180, p.RingDeg*math.Pi/180
 		return func(d vec) [3]float64 {
-			best, bestCos := 0, math.Inf(-1)
-			for i, s := range stickers {
-				if c := d.dot(s.centre); c > bestCos {
-					best, bestCos = i, c
-				}
-			}
+			best := nearestSticker(d, stickers)
 			sx, sy, ang := discCoords(d, stickers[best], R, p.Projection)
 			if ang <= R {
 				x, y := points[best](sx, sy)
@@ -322,12 +351,7 @@ func stickerTexelPhotos(photos []*RGB, p Params) func(d vec) [3]float64 {
 	stickers := layouts[p.Layout]
 	return func(d vec) [3]float64 {
 		// the nearest sticker centre owns this texel (first one wins a tie, like argmax)
-		best, bestCos := 0, math.Inf(-1)
-		for i, s := range stickers {
-			if c := d.dot(s.centre); c > bestCos {
-				best, bestCos = i, c
-			}
-		}
+		best := nearestSticker(d, stickers)
 		sx, sy, ang := discCoords(d, stickers[best], R, p.Projection)
 		switch {
 		case ang <= R:
