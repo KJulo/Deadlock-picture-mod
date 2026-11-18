@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/bc7"
+	"github.com/KJulo/Deadlock-picture-mod/backend/internal/mesh"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/photo"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/templates"
+	"github.com/KJulo/Deadlock-picture-mod/backend/internal/vmdl"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/vtex"
 )
 
@@ -37,7 +39,16 @@ func TestModEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	res, err := Mod(tpl, input, photo.DefaultParams())
+	p := photo.DefaultParams()
+	img, err := photo.Load(input, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tex, err := photo.SphereTextureEquirect(img, p, photo.TexSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := ModFromTexture(tpl, tex, mesh.SphereGeometry(vmdl.SphereRadius, nil), p.Roughness)
 	if err != nil {
 		t.Fatal(err)
 	}

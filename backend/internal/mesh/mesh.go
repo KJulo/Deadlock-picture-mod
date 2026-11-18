@@ -169,11 +169,10 @@ func UVSphere(radius float64, g Grid) Sphere {
 	for j := 0; j <= g.NV; j++ {
 		for i := 0; i <= g.NU; i++ {
 			u, v := float64(i)/float64(g.NU), float64(j)/float64(g.NV)
-			th, ph := v*math.Pi, u*2*math.Pi
-			n := Vec3{math.Sin(th) * math.Cos(ph), math.Sin(th) * math.Sin(ph), math.Cos(th)}
+			n, tangent, _ := (Equirect{}).TexelDir(u, v)
 			s.Normal = append(s.Normal, n)
 			s.Pos = append(s.Pos, n.Scale(radius))
-			s.Tangent = append(s.Tangent, Vec3{-math.Sin(ph), math.Cos(ph), 0}) // dP/du
+			s.Tangent = append(s.Tangent, tangent) // dP/du
 			s.UV = append(s.UV, [2]float64{u, v})
 		}
 	}

@@ -45,12 +45,19 @@ func ReliefTextures(p Params, size int) (*image.NRGBA, *image.NRGBA, error) {
 				t = e.Sub(n.Scale(e.Dot(n))).Normalize()
 			} else {
 				th, ph := v*math.Pi, u*2*math.Pi
-				d = mesh.Vec3(sphereDirection(u, v))
+				if mesh.UseCubeAtlas(shape) {
+					var ok bool
+					d, t, ok = (mesh.CubeAtlas{}).TexelDir(u, v)
+					if !ok {
+						continue
+					}
+				} else {
+					d, t, _ = (mesh.Equirect{}).TexelDir(u, v)
+				}
 				n = d
-				t = mesh.Vec3{-math.Sin(ph), math.Cos(ph), 0}
 				if shape != nil {
 					at := func(a, b float64) mesh.Vec3 {
-						q := mesh.Vec3{math.Sin(a) * math.Cos(b), math.Sin(a) * math.Sin(b), math.Cos(a)}
+						q, _, _ := (mesh.Equirect{}).TexelDir(b/(2*math.Pi), a/math.Pi)
 						return q.Scale(shape(q))
 					}
 					const h = 1e-4

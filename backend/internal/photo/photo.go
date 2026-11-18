@@ -158,12 +158,6 @@ var layouts = map[string][]sticker{
 	"single": {{vec{1, 0, 0}, vec{0, 0, 1}}},
 }
 
-// sphereDirection maps the centre of an equirectangular texel to a direction.
-func sphereDirection(u, v float64) vec {
-	th, ph := v*math.Pi, u*2*math.Pi
-	return vec{math.Sin(th) * math.Cos(ph), math.Sin(th) * math.Sin(ph), math.Cos(th)}
-}
-
 // nearestSticker applies the same first-wins tie rule for colour and relief.
 func nearestSticker(d vec, stickers []sticker) int {
 	best, bestCos := 0, math.Inf(-1)
@@ -247,8 +241,18 @@ func SphereTexture(photo *RGB, p Params, size int) (*image.NRGBA, error) {
 	return SphereTexturePhotos([]*RGB{photo}, p, size)
 }
 
+// SphereTextureEquirect retains the original reference mapping.
+func SphereTextureEquirect(photo *RGB, p Params, size int) (*image.NRGBA, error) {
+	return sphereTexturePhotos([]*RGB{photo}, p, size, false)
+}
+
 // SphereTexturePhotos renders freely placed seals using the nearest centre; the first wins ties.
 func SphereTexturePhotos(photos []*RGB, p Params, size int) (*image.NRGBA, error) {
+	shape, _ := mesh.ShapeByName(p.Shape)
+	return sphereTexturePhotos(photos, p, size, mesh.UseCubeAtlas(shape))
+}
+
+func sphereTexturePhotos(photos []*RGB, p Params, size int, atlas bool) (*image.NRGBA, error) {
 	if err := p.ValidatePhotos(len(photos)); err != nil {
 		return nil, err
 	}
@@ -261,7 +265,14 @@ func SphereTexturePhotos(photos []*RGB, p Params, size int) (*image.NRGBA, error
 
 	for row := 0; row < size; row++ {
 		for col := 0; col < size; col++ {
-			d := sphereDirection((float64(col)+0.5)/float64(size), (float64(row)+0.5)/float64(size))
+			u, v := (float64(col)+0.5)/float64(size), (float64(row)+0.5)/float64(size)
+			var md mesh.Vec3
+			if atlas {
+				md, _, _ = (mesh.CubeAtlas{}).TexelDir(u, v)
+			} else {
+				md, _, _ = (mesh.Equirect{}).TexelDir(u, v)
+			}
+			d := vec(md)
 
 			var px [3]float64
 			if p.Layout == "wrap" {
