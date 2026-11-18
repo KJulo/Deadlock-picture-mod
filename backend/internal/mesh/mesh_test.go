@@ -85,7 +85,10 @@ func TestMatchesPythonReference(t *testing.T) {
 			if !bytes.Equal(g[0:12], w[0:12]) {
 				diffs["position"]++
 			}
-			if !bytes.Equal(g[12:16], w[12:16]) {
+			// The stored Python golden predates centred pole UVs; all other bytes still match.
+			row := lod.Grid[0] + 1
+			poleColumn := (k > 0 && k < row) || (k >= lod.Grid[1]*row && k < lod.Grid[1]*row+lod.Grid[0])
+			if !bytes.Equal(g[14:16], w[14:16]) || (!bytes.Equal(g[12:14], w[12:14]) && !poleColumn) {
 				diffs["uv"]++
 			}
 			if !bytes.Equal(g[16:20], w[16:20]) {
@@ -207,5 +210,19 @@ func TestUVFormats(t *testing.T) {
 	}
 	if UVSnorm.Encode(1) != 32767 || UVSnorm.Encode(-5) != 0 || UVHalf.Encode(1) != 0x3c00 {
 		t.Error("encodings of the limits are wrong")
+	}
+}
+
+func TestPoleTrianglesUseColumnCentre(t *testing.T) {
+	for _, g := range []Grid{{76, 38}, {20, 10}} {
+		s := UVSphere(1, g)
+		for i := 0; i < g.NU; i++ {
+			want := (float64(i) + 0.5) / float64(g.NU)
+			top := s.Tris[g.NU*g.NV+i][0]
+			bottom := s.Tris[(g.NV-1)*g.NU+i][1]
+			if s.UV[top][0] != want || s.UV[bottom][0] != want {
+				t.Fatalf("grid %v column %d: top %v bottom %v, want %v", g, i, s.UV[top][0], s.UV[bottom][0], want)
+			}
+		}
 	}
 }

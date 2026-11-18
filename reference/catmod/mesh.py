@@ -91,7 +91,11 @@ def uv_sphere(radius: float, nu: int, nv: int, u0: float = 0.0, u1: float = 1.0)
     d = c + 1
     # same winding as the original model: cross(B-A, C-A) points outward
     tris = np.concatenate([np.stack([a, c, b], 1), np.stack([b, c, d], 1)])
-    return n * radius, np.stack([u, v], 1), n, t, tris
+    uv = np.stack([u, v], 1)
+    centers = u0 + (u1 - u0) * (np.arange(nu) + 0.5) / nu
+    uv[1:nu + 1, 0] = centers  # real top triangles use b
+    uv[nv * (nu + 1):nv * (nu + 1) + nu, 0] = centers  # bottom uses c
+    return n * radius, uv, n, t, tris
 
 
 def encode_uv(uv: np.ndarray, encoding: str) -> np.ndarray:

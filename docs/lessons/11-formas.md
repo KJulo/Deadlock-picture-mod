@@ -7,7 +7,7 @@ El modelo del juego tiene una cantidad **fija** de vértices y triángulos por L
 
 Eso trae tres ventajas:
 - cabe siempre en el presupuesto de vértices de cada LOD
-- las UV no cambian, así que **la foto, la textura y los sellos funcionan igual** en todas las formas
+- las UV siguen indicando la dirección de cada vértice, así que **la foto, la textura y los sellos funcionan igual** en todas las formas
 - con `forma = nil` sale la esfera de siempre, idéntica byte a byte (los goldens lo comprueban)
 
 ## Las formas: superelipsoides
@@ -37,3 +37,5 @@ El material del contenedor **no tiene transparencia** (un alpha 0 sale negro), a
 - **Mismo color que en la esfera:** cada píxel del atlas se pinta con la misma función que colorea esa dirección en la esfera (`stickerTexel`). Los sellos se ven idénticos; solo cambia dónde quedan en la textura.
 - **Cara de atrás:** el juego no dibuja los triángulos vistos por detrás. Cada medallón va **dos veces**, la segunda con el orden de los vértices al revés y la normal invertida, para que no desaparezca al mirarlo por un hueco.
 - **Tamaño:** el medallón mide lo que el sello más su aro, con un máximo de 45° para que los vecinos (a 90°) nunca se pisen. Por eso `/api/mesh?shape=medallions&cap_deg=…` se arma en cada pedido (tarda ~1 ms).
+
+**Distribución adaptativa:** las formas concentran vértices en las curvas del perfil y del ecuador. La grilla usa columnas múltiplos de ocho para ubicar las aristas del dado exactamente y conservar sus simetrías; se ajustan los anillos para respetar el presupuesto. En presupuestos muy pequeños se conserva la grilla original si la pérdida sería mayor al 8 %. La esfera no cambia su distribución.

@@ -65,3 +65,68 @@ func TestSphereShapeIsTheSphere(t *testing.T) {
 		}
 	}
 }
+
+func TestAdaptiveGrids(t *testing.T) {
+	budgets := [][2]int{{6084, 17997}, {3196, 9000}, {1531, 3576}, {1444, 3264}}
+	for _, budget := range budgets {
+		g := shapedGrid(budget[0], budget[1]/3)
+		if g.NU%8 != 0 || g.Vertices() > budget[0] || g.Triangles()*3 > budget[1] {
+			t.Fatalf("budget %v: grid %v", budget, g)
+		}
+		t.Logf("budget %v: grid %v, vertices %d/%d", budget, g, g.Vertices(), budget[0])
+		for _, name := range ShapeNames[1:] {
+			shape, _ := ShapeByName(name)
+			s := ShapedSphere(1, g, shape)
+			row := g.NU + 1
+			for i := 0; i < g.NU; i++ {
+				u := s.UV[row+i][0]
+				next := s.UV[row+i+1][0]
+				if next <= u {
+					t.Fatalf("%s grid %v nonmonotonic phi", name, g)
+				}
+				// Rotations and reflections are exact when every octant has equal counts.
+				oct := g.NU / 8
+				if math.Abs(s.UV[row+i+1][0]-u-(s.UV[row+(i+2*oct)%g.NU+1][0]-s.UV[row+(i+2*oct)%g.NU][0])) > 1e-10 {
+					t.Fatalf("%s rotation at %d", name, i)
+				}
+				if math.Abs(u+s.UV[row+g.NU-i][0]-1) > 1e-10 {
+					t.Fatalf("%s reflection at %d", name, i)
+				}
+			}
+			for oct := 1; oct < 8; oct += 2 {
+				if math.Abs(s.UV[row+oct*g.NU/8][0]-float64(oct)/8) > 1e-12 {
+					t.Fatalf("%s missing edge", name)
+				}
+			}
+			for j := 1; j < g.NV; j++ {
+				if s.UV[j*row][1] <= s.UV[(j-1)*row][1] {
+					t.Fatalf("%s nonmonotonic theta", name)
+				}
+				if name != "egg" && math.Abs(s.UV[j*row][1]+s.UV[(g.NV-j)*row][1]-1) > 1e-6 {
+					t.Fatalf("%s latitude symmetry %.12g", name, s.UV[j*row][1]+s.UV[(g.NV-j)*row][1]-1)
+				}
+				for i := 0; i <= g.NU; i++ {
+					k := j*row + i
+					p := s.Pos[k].Normalize()
+					u := math.Atan2(p[1], p[0]) / (2 * math.Pi)
+					if u < 0 {
+						u++
+					}
+					if i == g.NU {
+						u = 1
+					}
+					v := math.Acos(math.Max(-1, math.Min(1, p[2]))) / math.Pi
+					if math.Abs(s.UV[k][0]-u) > 1e-10 || math.Abs(s.UV[k][1]-v) > 1e-10 {
+						t.Fatalf("%s direction UV at %d", name, k)
+					}
+				}
+			}
+			for i := 0; i < g.NU; i++ {
+				center := (s.UV[row+i][0] + s.UV[row+i+1][0]) / 2
+				if math.Abs(s.UV[s.Tris[g.NU*g.NV+i][0]][0]-center) > 1e-12 || math.Abs(s.UV[s.Tris[(g.NV-1)*g.NU+i][1]][0]-center) > 1e-12 {
+					t.Fatalf("%s pole centre", name)
+				}
+			}
+		}
+	}
+}

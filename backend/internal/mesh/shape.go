@@ -41,9 +41,60 @@ func superellipsoid(a, b, c, e1, e2 float64) Shape {
 	}
 }
 
-// ShapedSphere is UVSphere with every vertex moved by shape. Normals come from the surface
-// itself (finite differences on the continuous parametrization, so the seam stays smooth), and
-// tangents keep following dP/du, re-orthogonalized against the new normal.
+// shapedGrid reserves columns for all eight octants, then fills the triangle and vertex
+// budgets with rings. The plain sphere continues to use SphereGrid unchanged.
+func shapedGrid(vertices, triangles int) Grid {
+	base := SphereGrid(vertices, triangles)
+	nu := base.NU / 8 * 8
+	if nu < 8 {
+		return base
+	}
+	nv := min(vertices/(nu+1)-1, triangles/(2*nu))
+	g := Grid{nu, nv}
+	// Small budgets can lose too much detail when rounded down.
+	if g.Vertices()*100 < base.Vertices()*92 {
+		return base
+	}
+	return g
+}
+
+// sampleCurve equalizes a blend of surface arc length and tangent rotation. The latter
+// gives extra samples to rounded edges while arc length retains coverage on flat faces.
+func sampleCurve(count int, start, end float64, at func(float64) Vec3) []float64 {
+	const steps = 2048
+	points := make([]Vec3, steps+1)
+	lengths := make([]float64, steps+1)
+	for i := range points {
+		points[i] = at(start + (end-start)*float64(i)/steps)
+	}
+	turn := make([]float64, steps+1)
+	for i := 1; i < steps; i++ {
+		prev, next := points[i].Sub(points[i-1]), points[i+1].Sub(points[i])
+		if prev.Dot(prev) > 1e-24 && next.Dot(next) > 1e-24 {
+			turn[i] = math.Acos(math.Max(-1, math.Min(1, prev.Normalize().Dot(next.Normalize()))))
+		}
+	}
+	for i := 1; i <= steps; i++ {
+		delta := points[i].Sub(points[i-1])
+		lengths[i] = lengths[i-1] + math.Sqrt(delta.Dot(delta)) + 0.125*(turn[i-1]+turn[i])
+	}
+	out := make([]float64, count+1)
+	out[count] = end
+	k := 1
+	for i := 1; i < count; i++ {
+		target := lengths[steps] * float64(i) / float64(count)
+		for k < steps && lengths[k] < target {
+			k++
+		}
+		fraction := (target - lengths[k-1]) / (lengths[k] - lengths[k-1])
+		out[i] = start + (end-start)*(float64(k-1)+fraction)/steps
+	}
+	out[0] = start
+	return out
+}
+
+// ShapedSphere samples the continuous radial surface more densely around its bends.
+// Each octant has matching reflected samples when the column count permits it.
 func ShapedSphere(radius float64, g Grid, shape Shape) Sphere {
 	s := UVSphere(radius, g)
 	if shape == nil {
@@ -51,23 +102,50 @@ func ShapedSphere(radius float64, g Grid, shape Shape) Sphere {
 	}
 	at := func(th, ph float64) Vec3 {
 		d := Vec3{math.Sin(th) * math.Cos(ph), math.Sin(th) * math.Sin(ph), math.Cos(th)}
-		return d.Scale(radius * shape(d))
+		return d.Scale(shape(d))
 	}
-	const h = 1e-4
-	for k, uv := range s.UV {
-		th, ph := uv[1]*math.Pi, uv[0]*2*math.Pi
-		s.Pos[k] = at(th, ph)
-		// at the poles dP/du vanishes: take the normal from just beside the pole
-		tc := math.Min(math.Max(th, 2*h), math.Pi-2*h)
-		du := at(tc, ph+h).Sub(at(tc, ph-h))
-		dv := at(tc+h, ph).Sub(at(tc-h, ph))
-		n := dv.Cross(du).Normalize() // outward (v grows downward from +Z)
-		if th == 0 || th == math.Pi { // poles are axis-symmetric for every shape here
-			n = Vec3{0, 0, math.Cos(th)}
+	theta := sampleCurve(g.NV, 0, math.Pi, func(th float64) Vec3 { return at(th, math.Pi/4) })
+	// Allocate segments to octants as evenly as the budget permits. If NU is not
+	// divisible by eight, exact mirror symmetry is impossible with a fixed seam.
+	phi := make([]float64, 0, g.NU+1)
+	for oct := 0; oct < 8; oct++ {
+		count := (oct+1)*g.NU/8 - oct*g.NU/8
+		if count == 0 {
+			continue
 		}
-		t := s.Tangent[k]
-		t = t.Sub(n.Scale(t.Dot(n))).Normalize()
-		s.Normal[k], s.Tangent[k] = n, t
+		base := sampleCurve(count, 0, math.Pi/4, func(ph float64) Vec3 { return at(math.Pi/2, ph) })
+		for i := 0; i < count; i++ {
+			x := base[i]
+			if oct%2 == 1 {
+				x = math.Pi/4 - base[count-i]
+			}
+			phi = append(phi, float64(oct)*math.Pi/4+x)
+		}
+	}
+	phi = append(phi, 2*math.Pi)
+	const h = 1e-4
+	for j, th := range theta {
+		for i, ph := range phi {
+			k := j*(g.NU+1) + i
+			s.Pos[k] = at(th, ph).Scale(radius)
+			s.UV[k] = [2]float64{ph / (2 * math.Pi), th / math.Pi}
+			tc := math.Min(math.Max(th, 2*h), math.Pi-2*h)
+			du := at(tc, ph+h).Sub(at(tc, ph-h))
+			dv := at(tc+h, ph).Sub(at(tc-h, ph))
+			n := dv.Cross(du).Normalize()
+			if j == 0 || j == g.NV {
+				n = Vec3{0, 0, math.Cos(th)}
+			}
+			t := Vec3{-math.Sin(ph), math.Cos(ph), 0}
+			t = t.Sub(n.Scale(t.Dot(n))).Normalize()
+			s.Normal[k], s.Tangent[k] = n, t
+		}
+	}
+	// The nondegenerate top triangle uses b, while the bottom one uses c.
+	for i := 0; i < g.NU; i++ {
+		center := (phi[i] + phi[i+1]) / (4 * math.Pi)
+		s.UV[i+1][0] = center
+		s.UV[g.NV*(g.NU+1)+i][0] = center
 	}
 	return s
 }
