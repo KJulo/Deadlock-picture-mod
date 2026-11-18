@@ -77,6 +77,16 @@ func TestAdaptiveGrids(t *testing.T) {
 		for _, name := range ShapeNames[1:] {
 			shape, _ := ShapeByName(name)
 			s := ShapedSphere(1, g, shape)
+			zSymmetric := true
+			for j := 0; j <= 18; j++ {
+				for i := 0; i < 36; i++ {
+					th, ph := math.Pi*float64(j)/18, 2*math.Pi*float64(i)/36
+					d := Vec3{math.Sin(th) * math.Cos(ph), math.Sin(th) * math.Sin(ph), math.Cos(th)}
+					if math.Abs(shape(d)-shape(Vec3{d[0], d[1], -d[2]})) > 1e-9 {
+						zSymmetric = false
+					}
+				}
+			}
 			row := g.NU + 1
 			for i := 0; i < g.NU; i++ {
 				u := s.UV[row+i][0]
@@ -102,7 +112,7 @@ func TestAdaptiveGrids(t *testing.T) {
 				if s.UV[j*row][1] <= s.UV[(j-1)*row][1] {
 					t.Fatalf("%s nonmonotonic theta", name)
 				}
-				if name != "egg" && math.Abs(s.UV[j*row][1]+s.UV[(g.NV-j)*row][1]-1) > 1e-6 {
+				if zSymmetric && math.Abs(s.UV[j*row][1]+s.UV[(g.NV-j)*row][1]-1) > 1e-6 {
 					t.Fatalf("%s latitude symmetry %.12g", name, s.UV[j*row][1]+s.UV[(g.NV-j)*row][1]-1)
 				}
 				for i := 0; i <= g.NU; i++ {
