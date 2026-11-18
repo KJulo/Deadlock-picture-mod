@@ -302,8 +302,10 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   }
   init();
 
-  // Before any photo, the viewer shows the cat from a pre-rendered texture (0 API calls). The
-  // medallions need their own one, since their texture is laid out differently.
+  // Before any photo, the viewer shows the cat from a pre-rendered texture (0 API calls), laid
+  // out for the default sphere (cube atlas). The medallions need their own one, since their
+  // texture is laid out differently. Regenerate sample-texture.jpg whenever the sphere's layout
+  // changes: POST /api/texture?size=1024 with public/sample.jpg and the default seals.
   async function showSample() {
     const res = await fetch(isMedallions() ? '/sample-medallions.jpg' : '/sample-texture.jpg');
     if (res.ok) await viewer?.setTextureBlob(await res.blob());
@@ -383,14 +385,15 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     $('ring-colors').hidden = wrap;
     renderSeals();
   }
-  // A radial shape only changes the geometry (same texture). Medallions use their own texture
-  // layout (an atlas of the six seals), so switching to or from them also re-renders it.
+  // The texture layout depends on the shape (the backend picks a cube atlas or the
+  // equirectangular grid per shape, and medallions have their own atlas), so every shape change
+  // re-renders the texture along with the mesh.
   let wasMedallions = false;
   document.querySelectorAll('input[name="shape"]').forEach((el) => el.addEventListener('change', () => {
     if (isMedallions() !== wasMedallions) resetSeals();
     syncLayout();
     reloadMesh();
-    if (isMedallions() !== wasMedallions || +$<HTMLInputElement>('relief').value > 0) { if (photo) later(); else showSample(); }
+    if (photo) later(); else showSample();
     wasMedallions = isMedallions();
     scheduleCheckpoint();
   }));
