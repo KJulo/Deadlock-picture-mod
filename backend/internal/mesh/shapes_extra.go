@@ -27,10 +27,32 @@ func capsuleShape(d Vec3) float64 {
 }
 
 func heartShape(d Vec3) float64 {
-	// The YZ silhouette is indented between the upper lobes and tapers below.
-	y, z := d[1], d[2]
-	indentation := math.Exp(-y*y/0.09) * math.Pow(math.Max(z, 0), 2)
-	return 0.78 * (1 + 0.12*z - 0.46*indentation + 0.13*y*y*math.Max(z, 0))
+	// Cube-rooting the Taubin equation gives A*r² - B*r^(5/3) - 1 = 0.
+	// X is depth, Y width, and Z up; smoothing B removes both axial cusps.
+	a := d[1]*d[1] + 2.25*d[0]*d[0] + d[2]*d[2]
+	b := d[2] * math.Cbrt(d[1]*d[1]+0.1125*d[0]*d[0]+0.002)
+	// The equation has exactly one positive root: after its sole possible
+	// positive turning point it rises from below zero to infinity.
+	lo, hi := 0.0, 4.0
+	r := 1 / math.Sqrt(a)
+	for i := 0; i < 20; i++ {
+		p := math.Cbrt(r * r)
+		f := a*r*r - b*r*p - 1
+		if math.Abs(f) < 1e-14 {
+			break
+		}
+		if f > 0 {
+			hi = r
+		} else {
+			lo = r
+		}
+		next := r - f/(2*a*r-(5.0/3)*b*p)
+		if next <= lo || next >= hi || math.IsNaN(next) {
+			next = (lo + hi) / 2
+		}
+		r = next
+	}
+	return 0.72 * r
 }
 
 func brilliantShape(d Vec3) float64 {

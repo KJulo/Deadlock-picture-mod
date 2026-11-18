@@ -36,3 +36,35 @@ func TestExtraShapes(t *testing.T) {
 		})
 	}
 }
+
+func TestHeartSmoothSlopes(t *testing.T) {
+	const h = 1e-4
+	for j := 0; j <= 90; j++ {
+		for i := 0; i < 180; i++ {
+			th, ph := math.Pi*float64(j)/90, 2*math.Pi*float64(i)/180
+			d := Vec3{math.Sin(th) * math.Cos(ph), math.Sin(th) * math.Sin(ph), math.Cos(th)}
+			tangents := []Vec3{{math.Cos(th) * math.Cos(ph), math.Cos(th) * math.Sin(ph), -math.Sin(th)}, {-math.Sin(ph), math.Cos(ph), 0}}
+			for _, tangent := range tangents {
+				plus := d.Scale(math.Cos(h)).Add(tangent.Scale(math.Sin(h)))
+				minus := d.Scale(math.Cos(h)).Sub(tangent.Scale(math.Sin(h)))
+				left := (heartShape(d) - heartShape(minus)) / h
+				right := (heartShape(plus) - heartShape(d)) / h
+				if math.Abs(left-right) > 0.01 {
+					t.Fatalf("slope jump at theta=%g phi=%g: %g vs %g", th, ph, left, right)
+				}
+			}
+		}
+	}
+}
+
+func TestHeartLobes(t *testing.T) {
+	center := heartShape(Vec3{0, 0, 1})
+	for _, sign := range []float64{-1, 1} {
+		angle := 25 * math.Pi / 180
+		d := Vec3{0, sign * math.Sin(angle), math.Cos(angle)}
+		r := heartShape(d)
+		if r <= center || r*d[2] <= center {
+			t.Fatalf("lobe radius %g and height %g do not exceed top center %g", r, r*d[2], center)
+		}
+	}
+}
