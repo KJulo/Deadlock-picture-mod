@@ -2,7 +2,7 @@
 // TypeScript checker, and `astro build` does not, so these tests are the real guard.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { ui, fmt, homeUrl, useDict, defaultLang } from '../src/i18n/ui.ts';
 
 const { es, en } = ui;
@@ -55,9 +55,13 @@ test('each translation keeps the same inline HTML tags (set:html strings)', () =
 });
 
 test('every error code the backend sends has a translation', () => {
-  const go = readFileSync(new URL('../../backend/internal/api/api.go', import.meta.url), 'utf8');
+  const apiDir = new URL('../../backend/internal/api/', import.meta.url);
+  const go = readdirSync(apiDir)
+    .filter((f) => f.endsWith('.go') && !f.endsWith('_test.go'))
+    .map((f) => readFileSync(new URL(f, apiDir), 'utf8'))
+    .join('\n');
   const codes = [...new Set([...go.matchAll(/apiError\{[^,]+,\s*"([a-z_]+)"/g)].map((m) => m[1]))];
-  assert.ok(codes.length > 0, 'found no apiError codes in api.go: did the pattern change?');
+  assert.ok(codes.length > 0, 'found no apiError codes in backend/internal/api/: did the pattern change?');
   for (const code of codes) {
     assert.ok(code in es.errors, `es.errors.${code} is missing`);
     assert.ok(code in en.errors, `en.errors.${code} is missing`);
