@@ -1,7 +1,10 @@
 package photo
 
 import (
+	"bytes"
 	"math"
+	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/mesh"
@@ -60,5 +63,66 @@ func TestCubeReliefUsesAtlasFrame(t *testing.T) {
 	c := n.NRGBAAt(int(u*720), int(v*720))
 	if c.R >= 128 {
 		t.Fatalf("incorrect relief tangent: %+v", c)
+	}
+}
+
+func TestParallelReliefDeterminism(t *testing.T) {
+	multiSeals := make([]Seal, 6)
+	for i, s := range layouts["cube6"] {
+		multiSeals[i] = Seal{
+			Photo:  0,
+			Dir:    s.centre,
+			Center: [2]float64{0.5, 0.5},
+			Radius: 0.5,
+		}
+	}
+
+	cases := []struct {
+		name string
+		mod  func(*Params)
+	}{
+		{"sphere_relief", func(p *Params) { p.Relief = 0.8 }},
+		{"cube_relief", func(p *Params) { p.Shape, p.Relief = "cube", 0.9 }},
+		{"egg_relief", func(p *Params) { p.Shape, p.Relief = "egg", 0.7 }},
+		{"medallions_relief", func(p *Params) { p.Shape, p.Relief, p.Seals = mesh.MedallionsShape, 1, multiSeals }},
+		{"zero_relief", func(p *Params) { p.Relief = 0 }},
+	}
+
+	prev := runtime.GOMAXPROCS(0)
+	defer runtime.GOMAXPROCS(prev)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := DefaultParams()
+			p.RingDeg = 8
+			tc.mod(&p)
+
+			runtime.GOMAXPROCS(1)
+			wantN, wantAO, err := ReliefTextures(p, 128)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			runtime.GOMAXPROCS(4)
+			var wg sync.WaitGroup
+			for g := 0; g < 4; g++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					gotN, gotAO, err := ReliefTextures(p, 128)
+					if err != nil {
+						t.Errorf("ReliefTextures failed: %v", err)
+						return
+					}
+					if !bytes.Equal(gotN.Pix, wantN.Pix) {
+						t.Errorf("normal map differed from GOMAXPROCS(1)")
+					}
+					if !bytes.Equal(gotAO.Pix, wantAO.Pix) {
+						t.Errorf("AO map differed from GOMAXPROCS(1)")
+					}
+				}()
+			}
+			wg.Wait()
+		})
 	}
 }
