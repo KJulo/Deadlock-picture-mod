@@ -19,6 +19,10 @@ const shapeIcons = {
   gem: '<path d="M24 4 42 24 24 44 6 24Z" stroke-linejoin="round"/>',
   coin: '<rect x="5" y="16" width="38" height="16" rx="5"/>',
   egg: '<path d="M24 4c10 0 16 14 16 24a16 16 0 0 1-32 0C8 18 14 4 24 4Z"/>',
+  d20: '<path d="M24 3 42 14 40 35 24 45 8 35 6 14Z M6 14 24 10 42 14 M8 35 24 10 40 35 24 45Z" stroke-linejoin="round"/>',
+  capsule: '<rect x="14" y="3" width="20" height="42" rx="10"/>',
+  heart: '<path d="M24 41C20 37 5 27 5 17 5 7 17 4 24 13 31 4 43 7 43 17 43 27 28 37 24 41Z"/>',
+  brilliant: '<path d="M5 16 13 7 35 7 43 16 24 42Z M5 16H43 M13 7 17 16 24 42 31 16 35 7" stroke-linejoin="round"/>',
   medallions: '<circle cx="24" cy="24" r="7"/><circle cx="9" cy="24" r="5"/><circle cx="39" cy="24" r="5"/><circle cx="24" cy="9" r="5"/><circle cx="24" cy="39" r="5"/>',
 } as const;
 const shapes = (Object.keys(shapeIcons) as (keyof typeof shapeIcons)[])
@@ -60,7 +64,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
       <label class="lod">
         <span class="caps">{w.lod}</span>
         <select id="opt-lod">
-          {w.lods.map((name, i) => <option value={i}>{name}</option>)}
+          {w.lods.map((name, i) => <option value={i} selected={i === 3}>{name}</option>)}
         </select>
       </label>
     </div>
@@ -277,7 +281,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   async function init() {
   try {
     const [{ createViewer }, mesh, defaults] = await Promise.all([
-      import('../lib/preview/viewer.js'), api.mesh(0), api.defaults(),
+      import('../lib/preview/viewer.js'), api.mesh(3), api.defaults(),
     ]);
     maxBytes = defaults.max_upload_bytes;
     $('max-mb').textContent = String(Math.round(maxBytes / (1 << 20)));
@@ -856,7 +860,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   .range .caps { color: var(--cream-2); }
   input[type='range'] { width: 100%; accent-color: var(--gold); }
 
-  .shapes { border: 0; margin: 0 0 20px; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .shapes { border: 0; margin: 0 0 20px; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
   .shape, .layout {
     position: relative; display: grid; justify-items: center; gap: 6px; text-align: center; cursor: pointer;
     background: var(--ink-1); border: 1px solid var(--line); color: var(--cream-2);

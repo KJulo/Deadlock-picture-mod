@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/build"
+	"github.com/KJulo/Deadlock-picture-mod/backend/internal/mesh"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/photo"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/templates"
 )
@@ -33,11 +34,12 @@ func hexColor(s string) ([3]uint8, error) {
 func main() {
 	home, _ := os.UserHomeDir()
 	d := photo.DefaultParams()
+	shapeList := strings.Join(append(append([]string{}, mesh.ShapeNames...), mesh.MedallionsShape), " | ")
 	var (
 		out        = flag.String("o", "../build/go/pak01_dir.vpk", "output VPK")
 		tplDir     = flag.String("templates", "../templates", "game files dir (make fetch); $CATMOD_TEMPLATES overrides")
 		variant    = flag.String("variant", d.Variant, "sphere | cage (original model, photo in the lens domes)")
-		shape      = flag.String("shape", d.Shape, "sphere | cube | gem | coin | egg (sphere variant)")
+		shape      = flag.String("shape", d.Shape, shapeList+" (sphere variant)")
 		layout     = flag.String("layout", d.Layout, "cube6 | twice | wrap")
 		cx         = flag.Float64("cx", d.Center[0], "photo point at the sticker centre, X (0..1)")
 		cy         = flag.Float64("cy", d.Center[1], "photo point at the sticker centre, Y (0..1)")

@@ -39,3 +39,5 @@ El material del contenedor **no tiene transparencia** (un alpha 0 sale negro), a
 - **Tamaño:** el medallón mide lo que el sello más su aro, con un máximo de 45° para que los vecinos (a 90°) nunca se pisen. Por eso `/api/mesh?shape=medallions&cap_deg=…` se arma en cada pedido (tarda ~1 ms).
 
 **Distribución adaptativa:** las formas concentran vértices en las curvas del perfil y del ecuador. La grilla usa columnas múltiplos de ocho para ubicar las aristas del dado exactamente y conservar sus simetrías; se ajustan los anillos para respetar el presupuesto. En presupuestos muy pequeños se conserva la grilla original si la pérdida sería mayor al 8 %. La esfera no cambia su distribución.
+
+También hay un dado de 20 caras redondeado, una cápsula, un corazón orientado hacia +X y un brillante con facetas suavizadas. El visor abre en LOD3, el nivel que se ve normalmente en el juego.
