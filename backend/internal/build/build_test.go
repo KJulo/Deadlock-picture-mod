@@ -1,9 +1,13 @@
 package build
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"image"
+	"image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -13,6 +17,7 @@ import (
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/bc7"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/mesh"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/photo"
+	"github.com/KJulo/Deadlock-picture-mod/backend/internal/resource"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/templates"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/vmdl"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/vtex"
@@ -181,5 +186,133 @@ func TestZeroReliefMatchesOriginal(t *testing.T) {
 		if sha(got.Files[path]) != sha(want) {
 			t.Errorf("%s differs with zero relief", path)
 		}
+	}
+}
+
+func syntheticVTex(size, mips, format int) []byte {
+	data := make([]byte, 28)
+	le := binary.LittleEndian
+	le.PutUint16(data[20:], uint16(size))
+	le.PutUint16(data[22:], uint16(size))
+	le.PutUint16(data[24:], 1)
+	data[26] = byte(format)
+	data[27] = byte(mips)
+	blockSize := bc7.BlockSize
+	if format == vtex.FormatBC4 {
+		blockSize = 8
+	}
+	trailerLen := 0
+	for i := 0; i < mips; i++ {
+		w := max(size>>i, 4)
+		trailerLen += (w / 4) * (w / 4) * blockSize
+	}
+	res := &resource.Resource{
+		HeaderVersion: 12,
+		Version:       1,
+		Blocks:        []resource.Block{{Kind: "DATA", Data: data, Align: 16}},
+		Trailer:       make([]byte, trailerLen),
+	}
+	return res.Serialize()
+}
+
+func syntheticModel() []byte {
+	blocks := make([]resource.Block, 11)
+	for i := range blocks {
+		blocks[i] = resource.Block{Kind: "DATA", Data: []byte{0}, Align: 16}
+	}
+	for _, lod := range vmdl.LODs {
+		blocks[lod.VertexBlock] = resource.Block{Kind: "MVTX", Data: []byte{0}, Align: 16}
+		blocks[lod.IndexBlock] = resource.Block{Kind: "MIDX", Data: []byte{0}, Align: 16}
+	}
+	res := &resource.Resource{HeaderVersion: 12, Version: 1, Blocks: blocks}
+	return res.Serialize()
+}
+
+func syntheticTemplates(size, mips int) *Templates {
+	return &Templates{
+		Model:       syntheticModel(),
+		Color:       syntheticVTex(size, mips, vtex.FormatBC7),
+		NormalRough: syntheticVTex(size, mips, vtex.FormatBC7),
+		AO:          syntheticVTex(size, mips, vtex.FormatBC4),
+	}
+}
+
+func syntheticPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			i := img.PixOffset(x, y)
+			img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = uint8(x*16), uint8(y*16), uint8((x+y)*8), 255
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestModPhotosSyntheticZeroAndNonZeroRelief(t *testing.T) {
+	const size, mips = 64, 5
+	tpl := syntheticTemplates(size, mips)
+	photoBytes := syntheticPNG(t, 16, 16)
+
+	pZero := photo.DefaultParams()
+	pZero.RingDeg = 10
+	pZero.Relief = 0
+	gotZero, err := ModPhotos(tpl, [][]byte{photoBytes}, pZero)
+	if err != nil {
+		t.Fatalf("ModPhotos(relief=0): %v", err)
+	}
+	wantZero, err := ModFromTexture(tpl, gotZero.Texture, Geometry(pZero), pZero.Roughness)
+	if err != nil {
+		t.Fatalf("ModFromTexture: %v", err)
+	}
+	for path, want := range wantZero.Files {
+		if !bytes.Equal(gotZero.Files[path], want) {
+			t.Errorf("relief=0: %s differs from ModFromTexture", path)
+		}
+	}
+
+	pRelief := pZero
+	pRelief.Relief = 0.85
+	gotRelief, err := ModPhotos(tpl, [][]byte{photoBytes}, pRelief)
+	if err != nil {
+		t.Fatalf("ModPhotos(relief=0.85): %v", err)
+	}
+	if !bytes.Equal(gotRelief.Files[templates.Model.GamePath], wantZero.Files[templates.Model.GamePath]) {
+		t.Error("relief=0.85: model differs from base build")
+	}
+	if !bytes.Equal(gotRelief.Files[templates.Color.GamePath], wantZero.Files[templates.Color.GamePath]) {
+		t.Error("relief=0.85: colour differs from base build")
+	}
+
+	normalImg, aoImg, err := photo.ReliefTextures(pRelief, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantNormal, err := vtex.RebuildBC7(tpl.NormalRough, normalImg, bc7.Linear)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAO, err := vtex.RebuildBC4(tpl.AO, aoImg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotRelief.Files[templates.NormalRough.GamePath], wantNormal) {
+		t.Error("relief=0.85: normal/roughness differs from direct RebuildBC7(ReliefTextures)")
+	}
+	if !bytes.Equal(gotRelief.Files[templates.AO.GamePath], wantAO) {
+		t.Error("relief=0.85: AO differs from direct RebuildBC4(ReliefTextures)")
+	}
+	if bytes.Equal(gotRelief.Files[templates.NormalRough.GamePath], gotZero.Files[templates.NormalRough.GamePath]) {
+		t.Error("relief=0.85: normal/roughness unexpectedly matched constant texture")
+	}
+	if bytes.Equal(gotRelief.Files[templates.AO.GamePath], gotZero.Files[templates.AO.GamePath]) {
+		t.Error("relief=0.85: AO unexpectedly matched constant texture")
+	}
+	if _, err := gotRelief.VPK(); err != nil {
+		t.Fatalf("VPK: %v", err)
 	}
 }

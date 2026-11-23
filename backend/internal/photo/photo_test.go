@@ -11,6 +11,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/mesh"
@@ -335,5 +337,122 @@ func TestTurnRotatesThePhotoClockwise(t *testing.T) {
 	p.TurnDeg = 400
 	if p.Validate() == nil {
 		t.Fatal("turn_deg 400 accepted")
+	}
+}
+
+func TestParallelRowsCoverage(t *testing.T) {
+	for _, n := range []int{0, 1, 2, 3, 7, 17, 64, 257} {
+		seen := make([]int, n)
+		parallelRows(n, func(y0, y1 int) {
+			for y := y0; y < y1; y++ {
+				seen[y]++
+			}
+		})
+		for y, count := range seen {
+			if count != 1 {
+				t.Fatalf("rows=%d: row %d visited %d times, want 1", n, y, count)
+			}
+		}
+	}
+}
+
+func TestParallelTextureDeterminism(t *testing.T) {
+	p1 := &RGB{W: 16, H: 12, Pix: make([]uint8, 16*12*3)}
+	p2 := &RGB{W: 12, H: 16, Pix: make([]uint8, 12*16*3)}
+	for i := range p1.Pix {
+		p1.Pix[i] = uint8((i*29 + 7) % 256)
+	}
+	for i := range p2.Pix {
+		p2.Pix[i] = uint8((i*53 + 11) % 256)
+	}
+	photos := []*RGB{p1, p2}
+
+	multiSeals := make([]Seal, 6)
+	for i, s := range layouts["cube6"] {
+		multiSeals[i] = Seal{
+			Photo:   i % 2,
+			Dir:     s.centre,
+			RollDeg: float64(i * 15),
+			Center:  [2]float64{0.45, 0.55},
+			Radius:  0.48,
+			TurnDeg: float64(i * 30),
+		}
+	}
+
+	cases := []struct {
+		name   string
+		render func() (*image.NRGBA, error)
+	}{
+		{
+			name: "sphere_equirect_cube6",
+			render: func() (*image.NRGBA, error) {
+				p := DefaultParams()
+				return SphereTextureEquirect(p1, p, 128)
+			},
+		},
+		{
+			name: "sphere_atlas_wrap_flip",
+			render: func() (*image.NRGBA, error) {
+				p := DefaultParams()
+				p.Layout, p.Back, p.TurnDeg = "wrap", "flip", 25
+				return SphereTexturePhotos(photos, p, 128)
+			},
+		},
+		{
+			name: "sphere_atlas_wrap_color",
+			render: func() (*image.NRGBA, error) {
+				p := DefaultParams()
+				p.Layout, p.Back = "wrap", "color"
+				return SphereTexturePhotos(photos, p, 128)
+			},
+		},
+		{
+			name: "sphere_atlas_multiseal",
+			render: func() (*image.NRGBA, error) {
+				p := DefaultParams()
+				p.Seals = multiSeals
+				return SphereTexturePhotos(photos, p, 128)
+			},
+		},
+		{
+			name: "medallions_multiseal",
+			render: func() (*image.NRGBA, error) {
+				p := DefaultParams()
+				p.Shape = mesh.MedallionsShape
+				p.Seals = multiSeals
+				return MedallionTexturePhotos(photos, p, 128)
+			},
+		},
+	}
+
+	prev := runtime.GOMAXPROCS(0)
+	defer runtime.GOMAXPROCS(prev)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime.GOMAXPROCS(1)
+			want, err := tc.render()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			runtime.GOMAXPROCS(4)
+			var wg sync.WaitGroup
+			for g := 0; g < 4; g++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					got, err := tc.render()
+					if err != nil {
+						t.Errorf("render failed: %v", err)
+						return
+					}
+					if !bytes.Equal(got.Pix, want.Pix) {
+						t.Errorf("parallel output differed from GOMAXPROCS(1)")
+					}
+				}()
+			}
+			wg.Wait()
+		})
 	}
 }

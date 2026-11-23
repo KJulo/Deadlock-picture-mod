@@ -72,7 +72,6 @@ func ModPhotos(t *Templates, photoData [][]byte, p photo.Params) (*Result, error
 		}
 	}
 	img := imgs[0]
-	var err error
 	if p.Variant == "cage" {
 		return cage(t, img, p)
 	}
@@ -84,23 +83,11 @@ func ModPhotos(t *Templates, photoData [][]byte, p photo.Params) (*Result, error
 	if err != nil {
 		return nil, err
 	}
-	result, err := ModFromTexture(t, texture, Geometry(p), p.Roughness)
-	if err != nil || p.Relief == 0 {
-		return result, err
+	var relief *photo.Params
+	if p.Relief != 0 {
+		relief = &p
 	}
-	normal, ao, err := photo.ReliefTextures(p, info.Width)
-	if err != nil {
-		return nil, err
-	}
-	result.Files[templates.NormalRough.GamePath], err = vtex.RebuildBC7(t.NormalRough, normal, bc7.Linear)
-	if err != nil {
-		return nil, fmt.Errorf("normal/roughness texture: %w", err)
-	}
-	result.Files[templates.AO.GamePath], err = vtex.RebuildBC4(t.AO, ao)
-	if err != nil {
-		return nil, fmt.Errorf("AO texture: %w", err)
-	}
-	return result, nil
+	return modFromTexture(t, texture, Geometry(p), p.Roughness, relief)
 }
 
 // Geometry returns the mesh for p.Shape (validated): a radial shape or the medallions.
@@ -117,6 +104,10 @@ func Geometry(p photo.Params) mesh.Geometry {
 
 // ModFromTexture builds the mod from an already composed colour texture.
 func ModFromTexture(t *Templates, texture *image.NRGBA, geom mesh.Geometry, roughness float64) (*Result, error) {
+	return modFromTexture(t, texture, geom, roughness, nil)
+}
+
+func modFromTexture(t *Templates, texture *image.NRGBA, geom mesh.Geometry, roughness float64, relief *photo.Params) (*Result, error) {
 	model, lods, err := vmdl.BuildModel(t.Model, geom, nil)
 	if err != nil {
 		return nil, fmt.Errorf("model: %w", err)
@@ -125,13 +116,29 @@ func ModFromTexture(t *Templates, texture *image.NRGBA, geom mesh.Geometry, roug
 	if err != nil {
 		return nil, fmt.Errorf("colour texture: %w", err)
 	}
-	normalRough, err := vtex.RebuildBC7Constant(t.NormalRough, NormalRoughRGBA(roughness), bc7.Linear)
-	if err != nil {
-		return nil, fmt.Errorf("normal/roughness texture: %w", err)
-	}
-	ao, err := vtex.RebuildBC4Constant(t.AO, 255) // white = no baked occlusion
-	if err != nil {
-		return nil, fmt.Errorf("AO texture: %w", err)
+	var normalRough, ao []byte
+	if relief != nil {
+		normalImg, aoImg, err := photo.ReliefTextures(*relief, texture.Bounds().Dx())
+		if err != nil {
+			return nil, err
+		}
+		normalRough, err = vtex.RebuildBC7(t.NormalRough, normalImg, bc7.Linear)
+		if err != nil {
+			return nil, fmt.Errorf("normal/roughness texture: %w", err)
+		}
+		ao, err = vtex.RebuildBC4(t.AO, aoImg)
+		if err != nil {
+			return nil, fmt.Errorf("AO texture: %w", err)
+		}
+	} else {
+		normalRough, err = vtex.RebuildBC7Constant(t.NormalRough, NormalRoughRGBA(roughness), bc7.Linear)
+		if err != nil {
+			return nil, fmt.Errorf("normal/roughness texture: %w", err)
+		}
+		ao, err = vtex.RebuildBC4Constant(t.AO, 255) // white = no baked occlusion
+		if err != nil {
+			return nil, fmt.Errorf("AO texture: %w", err)
+		}
 	}
 	return &Result{
 		Files: map[string][]byte{

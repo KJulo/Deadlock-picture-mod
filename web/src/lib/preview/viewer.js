@@ -48,7 +48,7 @@ function placeholderTexture() {
 }
 
 export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, onMove } = {}) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
@@ -88,6 +88,13 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   shadow.rotation.x = -Math.PI / 2;
   scene.add(shadow);
 
+  const options = { spin: true, effects: true, pulse: true, outline: true };
+  function syncOptions() {
+    material.uniforms.uPulse.value = options.pulse ? 1 : 0;
+    if (hull) hull.visible = options.outline;
+    glow.visible = embers.visible = options.effects;
+  }
+
   function setMesh(m) {
     if (body) { orb.remove(body, hull); body.geometry.dispose(); }
     const geo = geometryFromMesh(m);
@@ -95,6 +102,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
     body = new THREE.Mesh(geo, material);
     hull = new THREE.Mesh(geo, outline);
     orb.add(hull, body);
+    syncOptions();
     shadow.scale.setScalar(radius * 2.6);
     shadow.position.y = geo.boundingBox.min.y - radius * 0.02;
     controls.target.set(0, 0, 0);
@@ -114,8 +122,19 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   }
   if (mesh) setMesh(mesh);
 
+  let disposed = false;
+  let mapSeq = 0, normalSeq = 0;
+  function disposeTexture(tex) {
+    if (!tex) return;
+    tex.dispose();
+    tex.image?.close?.();
+  }
+
   async function setTextureBlob(blob) {
+    if (disposed) return;
+    const seq = ++mapSeq;
     const bitmap = await createImageBitmap(blob, { imageOrientation: 'none' });
+    if (disposed || seq !== mapSeq) { bitmap.close(); return; }
     const tex = new THREE.Texture(bitmap);
     tex.flipY = false; // row 0 of the texture is the top pole (v = 0), as in the game
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -125,15 +144,26 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
     tex.needsUpdate = true;
     const old = material.uniforms.uMap.value;
     material.uniforms.uMap.value = tex;
-    old.dispose();
+    disposeTexture(old);
   }
 
   async function setNormalBlob(blob) {
-    if (!blob) { material.uniforms.uHasNormal.value = 0; return; }
+    const seq = ++normalSeq;
+    if (!blob) {
+      const old = material.uniforms.uNormalMap.value;
+      material.uniforms.uNormalMap.value = null;
+      material.uniforms.uHasNormal.value = 0;
+      disposeTexture(old);
+      return;
+    }
+    if (disposed) return;
     const bitmap = await createImageBitmap(blob, { imageOrientation: 'none' });
+    if (disposed || seq !== normalSeq) { bitmap.close(); return; }
     const tex = new THREE.Texture(bitmap); tex.flipY = false; tex.needsUpdate = true;
-    material.uniforms.uNormalMap.value?.dispose();
-    material.uniforms.uNormalMap.value = tex; material.uniforms.uHasNormal.value = 1;
+    const old = material.uniforms.uNormalMap.value;
+    material.uniforms.uNormalMap.value = tex;
+    material.uniforms.uHasNormal.value = 1;
+    disposeTexture(old);
   }
 
   const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
@@ -156,21 +186,24 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
     raycaster.setFromCamera(mouse,camera); const point = raycaster.intersectObject(body)[0]?.point; if (!point) return null;
     const p = orb.worldToLocal(point.clone()).normalize(); return [p.x,-p.z,p.y];
   }
-  canvas.addEventListener('pointerdown', e => {
+  function onPointerDown(e) {
     // Shift/Ctrl/⌘ + left click rotates as well (trackpads without a right button)
     if (!movable || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) return; const d = hit(e); if (!d) return;
     let best = -1, score = Math.cos(sealAngle*Math.PI/180);
     dirs.forEach((v,i) => { const dot = d[0]*v[0]+d[1]*v[1]+d[2]*v[2]; if (dot > score) { score = dot; best = i; } });
     if (best < 0) return; e.stopImmediatePropagation(); e.preventDefault(); dragging = true; controls.enabled = false; canvas.setPointerCapture(e.pointerId); onSelect?.(best);
-  }, true);
-  canvas.addEventListener('pointermove', e => { if (!dragging) return; e.stopImmediatePropagation(); const d = hit(e); if (d) onMove?.(d,false); }, true);
+  }
+  function onPointerMove(e) { if (!dragging) return; e.stopImmediatePropagation(); const d = hit(e); if (d) onMove?.(d,false); }
   function endDrag(e) { if (!dragging) return; e.stopImmediatePropagation(); dragging = false; controls.enabled = true; const d = hit(e) || dirs[selected]; onMove?.(d,true); }
-  canvas.addEventListener('pointerup',endDrag,true); canvas.addEventListener('pointercancel',endDrag,true);
-  const options = { spin: true, effects: true, pulse: true, outline: true };
-  function set(opts) { Object.assign(options, opts); }
+  canvas.addEventListener('pointerdown', onPointerDown, true);
+  canvas.addEventListener('pointermove', onPointerMove, true);
+  canvas.addEventListener('pointerup', endDrag, true);
+  canvas.addEventListener('pointercancel', endDrag, true);
+  function set(opts) { Object.assign(options, opts); syncOptions(); }
 
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
     if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) {
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
@@ -184,22 +217,46 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   function frame(timestamp) {
     resize();
     timer.update(timestamp);
-    const dt = Math.min(timer.getDelta(), 0.1);
+    const dt = Math.max(0, Math.min(timer.getDelta(), 0.1));
     time += dt;
     if (options.spin && !dragging) { orb.rotation.y += dt * 0.35; orb.rotation.x = Math.sin(time * 0.4) * 0.35; }
     material.uniforms.uTime.value = time;
-    material.uniforms.uPulse.value = options.pulse ? 1 : 0;
-    if (hull) hull.visible = options.outline;
-    glow.visible = embers.visible = options.effects;
+    syncOptions();
     if (options.effects) embers.userData.update(dt, canvas.clientHeight * renderer.getPixelRatio(), camera.fov);
     controls.update();
     renderer.render(scene, camera);
   }
-  renderer.setAnimationLoop(frame);
+
+  let running = false;
+  function startLoop() {
+    if (disposed || running) return;
+    running = true;
+    timer.reset();
+    renderer.setAnimationLoop(frame);
+  }
+  function stopLoop() {
+    if (!running) return;
+    running = false;
+    renderer.setAnimationLoop(null);
+  }
+  startLoop();
+
+  let observer = null;
+  if (typeof IntersectionObserver !== 'undefined') {
+    observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (!entry) return;
+      if (entry.isIntersecting) startLoop();
+      else stopLoop();
+    });
+    observer.observe(canvas);
+  }
 
   // A square PNG of the current view (centre crop, without the selection marker), used as the
   // mod's cover picture in Deadlock Mod Manager.
   function cover(size = 512) {
+    resize();
+    syncOptions();
     const shown = marker.visible;
     marker.visible = false;
     renderer.render(scene, camera);
@@ -207,6 +264,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
     const out = Object.assign(document.createElement('canvas'), { width: size, height: size });
     out.getContext('2d').drawImage(canvas, (canvas.width - side) / 2, (canvas.height - side) / 2, side, side, 0, 0, size, size);
     marker.visible = shown;
+    if (shown) renderer.render(scene, camera);
     return new Promise((ok, fail) => out.toBlob((b) => (b ? ok(b) : fail(new Error('cover'))), 'image/png'));
   }
 
@@ -214,8 +272,47 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
     setMesh, setTextureBlob, setNormalBlob, set, setSeals,
     resetView() { userMoved = false; frameSphere(); },
     material, // exposed for calibration (uniforms)
-    snapshot: () => canvas.toDataURL('image/png'),
+    snapshot() {
+      resize();
+      syncOptions();
+      renderer.render(scene, camera);
+      return canvas.toDataURL('image/png');
+    },
     cover,
-    dispose() { renderer.setAnimationLoop(null); renderer.dispose(); controls.dispose(); timer.dispose?.(); },
+    dispose() {
+      disposed = true;
+      observer?.disconnect();
+      running = false;
+      renderer.setAnimationLoop(null);
+      canvas.removeEventListener('pointerdown', onPointerDown, true);
+      canvas.removeEventListener('pointermove', onPointerMove, true);
+      canvas.removeEventListener('pointerup', endDrag, true);
+      canvas.removeEventListener('pointercancel', endDrag, true);
+      disposeTexture(material.uniforms.uMap.value);
+      disposeTexture(material.uniforms.uNormalMap.value);
+      material.uniforms.uMap.value = null;
+      material.uniforms.uNormalMap.value = null;
+      material.dispose();
+      outline.dispose();
+      body?.geometry.dispose();
+      body = hull = null;
+      shadowTex.dispose();
+      shadow.geometry.dispose();
+      shadow.material.dispose();
+      marker.geometry.dispose();
+      marker.material.dispose();
+      const glowMaps = new Set();
+      glow.traverse((o) => {
+        if (o.material?.map) glowMaps.add(o.material.map);
+        o.material?.dispose?.();
+      });
+      for (const m of glowMaps) m.dispose();
+      embers.geometry.dispose();
+      embers.material.uniforms.uMap.value?.dispose?.();
+      embers.material.dispose();
+      controls.dispose();
+      renderer.dispose();
+      timer.dispose?.();
+    },
   };
 }

@@ -31,8 +31,11 @@ for (const [lang, path] of Object.entries(pages)) {
   test(`${lang}: the workshop has what its script needs`, () => {
     const html = read(path);
     const ids = new Set(attr(html, /\sid="([^"]+)"/g));
-    for (const id of ['taller', 'view', 'overlay', 'photo', 'drop', 'seal', 'zoom', 'turn', 'sticker_deg',
-      'ring_deg', 'forge', 'status', 'undo', 'redo', 'reset-all', 'legend-move', 'cover-link']) {
+    for (const id of ['taller', 'view', 'overlay', 'overlay-text', 'overlay-retry', 'photo', 'drop', 'seal', 'add-seal', 'apply-all',
+      'zoom', 'turn', 'sticker_deg', 'ring_deg', 'relief', 'bg-custom', 'ring-custom', 'advanced', 'back-opts',
+      'contrast', 'saturation', 'roughness', 'mod-name', 'forge', 'status', 'undo', 'redo', 'reset-all', 'legend-move', 'cover-link',
+      'out-zoom', 'out-turn', 'out-sticker_deg', 'out-ring_deg', 'out-relief', 'out-contrast', 'out-saturation', 'out-roughness',
+      'copy-console']) {
       assert.ok(ids.has(id), `#${id} is missing`);
     }
     // the runtime strings the script parses on load
@@ -41,5 +44,7 @@ for (const [lang, path] of Object.entries(pages)) {
     const json = raw.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
     const messages = JSON.parse(json);
     for (const key of ['workshop', 'status', 'errors']) assert.ok(messages[key], `messages.${key} is missing`);
+    for (const key of ['connecting', 'tooBigTotal']) assert.ok(messages.status[key], `messages.status.${key} is missing`);
+    assert.ok(messages.errors.rate_limited, 'messages.errors.rate_limited is missing');
   });
 }
