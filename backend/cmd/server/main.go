@@ -7,6 +7,8 @@
 //	ALLOWED_ORIGINS        comma-separated frontend origins for CORS (default http://localhost:4321)
 //	MAX_UPLOAD_MB          largest photo accepted (default 15)
 //	MAX_CONCURRENT_BUILDS  builds running at once (default 2)
+//	RATE_LIMIT_RPM         texture requests per minute per IP (default 60; 0 = disabled)
+//	BUILD_RATE_LIMIT_RPM   build requests per minute per IP (default 10; 0 = disabled)
 package main
 
 import (
@@ -34,13 +36,13 @@ func env(key, fallback string) string {
 	return fallback
 }
 
-func envInt(log *slog.Logger, key string, fallback int) int {
+func envInt(log *slog.Logger, key string, fallback, minVal int) int {
 	v := os.Getenv(key)
 	if v == "" {
 		return fallback
 	}
 	n, err := strconv.Atoi(v)
-	if err != nil || n < 1 {
+	if err != nil || n < minVal {
 		log.Error("invalid setting, using default", "key", key, "value", v, "default", fallback)
 		return fallback
 	}
@@ -58,12 +60,14 @@ func main() {
 		os.Exit(1)
 	}
 	cfg := api.Config{
-		MaxUploadBytes: int64(envInt(log, "MAX_UPLOAD_MB", 15)) << 20,
-		MaxConcurrent:  envInt(log, "MAX_CONCURRENT_BUILDS", 2),
-		QueueTimeout:   20 * time.Second,
-		MultiBuild:     func(data [][]byte, p photo.Params) (*build.Result, error) { return build.ModPhotos(tpl, data, p) },
-		AllowedOrigins: strings.Split(env("ALLOWED_ORIGINS", "http://localhost:4321"), ","),
-		Logger:         log,
+		MaxUploadBytes:       int64(envInt(log, "MAX_UPLOAD_MB", 15, 1)) << 20,
+		MaxConcurrent:        envInt(log, "MAX_CONCURRENT_BUILDS", 2, 1),
+		QueueTimeout:         20 * time.Second,
+		RateLimitPerMin:      envInt(log, "RATE_LIMIT_RPM", 60, 0),
+		BuildRateLimitPerMin: envInt(log, "BUILD_RATE_LIMIT_RPM", 10, 0),
+		MultiBuild:           func(data [][]byte, p photo.Params) (*build.Result, error) { return build.ModPhotos(tpl, data, p) },
+		AllowedOrigins:       strings.Split(env("ALLOWED_ORIGINS", "http://localhost:4321"), ","),
+		Logger:               log,
 	}
 	srv, err := api.New(cfg, func(data []byte, p photo.Params) (*build.Result, error) {
 		return build.Mod(tpl, data, p)
@@ -94,7 +98,8 @@ func main() {
 	}()
 
 	log.Info("listening", "addr", httpServer.Addr, "origins", cfg.AllowedOrigins,
-		"max_upload_mb", cfg.MaxUploadBytes>>20, "max_concurrent", cfg.MaxConcurrent)
+		"max_upload_mb", cfg.MaxUploadBytes>>20, "max_concurrent", cfg.MaxConcurrent,
+		"rate_limit_rpm", cfg.RateLimitPerMin, "build_rate_limit_rpm", cfg.BuildRateLimitPerMin)
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server error", "err", err)
 		os.Exit(1)

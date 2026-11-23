@@ -40,6 +40,36 @@ test('build accepts a single photo', async () => {
   assert.deepEqual([...calls[0].init.body.keys()], ['photo', 'params']);
 });
 
+test('normal sends JSON params without uploading photos (legacy signature)', async () => {
+  reply = () => new Response(new Blob(['normal-png']));
+  const ac = new AbortController();
+  const params = { relief: 0.6, shape: 'cube' };
+  const blob = await createApi('http://api.test').normal([new Blob(['ignored'])], params, 512, ac.signal);
+  const { url, init } = calls[0];
+  assert.equal(url, 'http://api.test/api/texture?size=512&map=normal');
+  assert.equal(init.method, 'POST');
+  assert.deepEqual(init.headers, { 'Content-Type': 'application/json' });
+  assert.equal(typeof init.body, 'string');
+  assert.deepEqual(JSON.parse(init.body), params);
+  assert.equal(init.signal, ac.signal);
+  assert.equal(await blob.text(), 'normal-png');
+});
+
+test('normal also works when called directly with (params, size, signal)', async () => {
+  reply = () => new Response(new Blob(['normal-png']));
+  const ac = new AbortController();
+  const params = { relief: 0.3, layout: 'cube6' };
+  await createApi('http://api.test').normal(params, 1024, ac.signal);
+  assert.equal(calls[0].url, 'http://api.test/api/texture?size=1024&map=normal');
+  assert.deepEqual(calls[0].init.headers, { 'Content-Type': 'application/json' });
+  assert.deepEqual(JSON.parse(calls[0].init.body), params);
+  assert.equal(calls[0].init.signal, ac.signal);
+
+  await createApi('http://api.test').normal(params);
+  assert.equal(calls[1].url, 'http://api.test/api/texture?size=2048&map=normal');
+  assert.deepEqual(JSON.parse(calls[1].init.body), params);
+});
+
 test('a backend error keeps its message, stable code and status', async () => {
   reply = () => Response.json({ error: { code: 'busy', message: 'the server is busy' } }, { status: 503 });
   await assert.rejects(createApi('http://api.test').defaults(),
