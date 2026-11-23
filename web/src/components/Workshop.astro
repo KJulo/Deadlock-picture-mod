@@ -12,7 +12,7 @@ const backgrounds = [
 ];
 const rings = [[sw.bone, '#ebebeb'], [sw.brass, '#c9a45c'], [sw.onyx, '#141414'], [sw.soul, '#29ffc9']];
 const layouts = (['cube6', 'twice', 'wrap', 'single'] as const).map((value) => ({ value, ...w.layouts[value] }));
-// 3D shapes (backend mesh.ShapeNames). Same texture and photo mapping for all of them.
+// 3D shapes (backend mesh.ShapeNames). Each shape picks its own texture layout.
 const shapeIcons = {
   sphere: '<circle cx="24" cy="24" r="18"/>',
   cube: '<rect x="8" y="8" width="32" height="32" rx="8"/>',
@@ -347,21 +347,25 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   }
 
   const uniquePhotos = () => Array.from(new Set(seals.map(s => s.file)));
+  let meshDirty = false;
   async function refresh(size = 2048) {
     if (!photo || !viewer) return;
     if (size === 2048 && !restoring) scheduleCheckpoint();
     inflight?.abort();
     const request = inflight = new AbortController();
     const files = isWrap() ? [photo] : uniquePhotos(), values = params();
+    const needMesh = meshDirty;
     status(msg('rendering'));
     try {
-      const [color, normal] = await Promise.all([
+      const [color, normal, nextMesh] = await Promise.all([
         api.texture(files, values, size, request.signal),
         values.relief > 0 ? api.normal(files, values, size, request.signal) : Promise.resolve(null),
+        needMesh ? api.mesh(lod(), values.shape ?? 'sphere', capDeg(), request.signal) : Promise.resolve(null),
       ]);
       if (request.signal.aborted) return;
       await viewer.setTextureBlob(color);
       if (request.signal.aborted) return;
+      if (nextMesh) { viewer.setMesh(nextMesh); meshDirty = false; }
       await viewer.setNormalBlob(normal);
       status('');
     } catch (e: any) {
@@ -387,13 +391,14 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   }
   // The texture layout depends on the shape (the backend picks a cube atlas or the
   // equirectangular grid per shape, and medallions have their own atlas), so every shape change
-  // re-renders the texture along with the mesh.
+  // re-renders the texture along with the mesh and swaps both together.
   let wasMedallions = false;
   document.querySelectorAll('input[name="shape"]').forEach((el) => el.addEventListener('change', () => {
     if (isMedallions() !== wasMedallions) resetSeals();
     syncLayout();
-    reloadMesh();
-    if (photo) later(); else showSample();
+    clearTimeout(timer);
+    if (photo) { meshDirty = true; refresh(); }
+    else { reloadMesh(); showSample(); }
     wasMedallions = isMedallions();
     scheduleCheckpoint();
   }));
@@ -644,7 +649,8 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
       seals = cloneSeals(s.seals);
       syncLayout();
       selectSeal(Math.min(s.selected, seals.length - 1));
-      if (checked('shape') !== prevShape || (isMedallions() && capDeg() !== prevCap)) reloadMesh();
+      if (checked('shape') !== prevShape || (isMedallions() && capDeg() !== prevCap)) meshDirty = true;
+      clearTimeout(timer);
       refresh();
     } finally {
       restoring = false;

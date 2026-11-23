@@ -45,7 +45,6 @@ func ReliefTextures(p Params, size int) (*image.NRGBA, *image.NRGBA, error) {
 				e := mesh.MedallionDir(k, 0.00001, 0, p.MedallionRad()).Sub(mesh.MedallionAxes[k].Scale(math.Cos(0.00001 * p.MedallionRad()))).Normalize()
 				t = e.Sub(n.Scale(e.Dot(n))).Normalize()
 			} else {
-				th, ph := v*math.Pi, u*2*math.Pi
 				if useAtlas {
 					var ok bool
 					d, t, ok = (mesh.CubeAtlas{}).TexelDir(u, v)
@@ -60,6 +59,7 @@ func ReliefTextures(p Params, size int) (*image.NRGBA, *image.NRGBA, error) {
 					n, t = mesh.SurfaceFrame(shape, d, t)
 				}
 				if shape != nil && !useAtlas {
+					th, ph := v*math.Pi, u*2*math.Pi
 					at := func(a, b float64) mesh.Vec3 {
 						q, _, _ := (mesh.Equirect{}).TexelDir(b/(2*math.Pi), a/math.Pi)
 						return q.Scale(shape(q))
