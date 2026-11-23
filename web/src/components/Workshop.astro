@@ -223,7 +223,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
               </label>
               <label class="range">
                 <span class="range-head"><span class="caps">{w.roughness}</span><output id="out-roughness" for="roughness">0.69</output></span>
-                <input type="range" id="roughness" min="0" max="1" step="0.05" value="0.69" />
+                <input type="range" id="roughness" min="0" max="1" step="0.01" value="0.69" />
               </label>
             </div>
           </div>
@@ -321,8 +321,9 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .replace(/[^a-z0-9_-]+/g, '_')
-      .replace(/^[_-]+|[_-]+$/g, '')
-      .slice(0, 48);
+      .replace(/^[_-]+/, '')
+      .slice(0, 48)
+      .replace(/[_-]+$/, '');
   // framing: the photo point at the seal centre (0..1), zoom (1 = disc of half the shorter side)
   // and clockwise turn in degrees. The seal editor and the backend map photos the same way.
   const frame = { x: 0.5, y: 0.5, zoom: 1, turn: 0 };
@@ -421,6 +422,8 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
         refresh();
       }
     } catch {
+      viewer?.dispose?.();
+      viewer = null;
       overlay(msg('offline'), true);
       status(msg('noServer'), true);
     } finally {
@@ -720,21 +723,21 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   document.querySelectorAll('input[name="layout"], input[name="shape"]').forEach((el) =>
     el.addEventListener('change', drawSeal));
 
-  function usePhoto(file: Blob, { render = true, applyAll = isAllSample() }: { render?: boolean; applyAll?: boolean } = {}) {
+  function usePhoto(file: Blob, { render = true, applyAll = isAllSample() }: { render?: boolean; applyAll?: boolean } = {}): boolean {
     if (file.size > maxBytes) {
       status(msg('tooBig', { size: (file.size / 1e6).toFixed(1), max: Math.round(maxBytes / (1 << 20)) }), true);
-      return;
+      return false;
     }
     if (!isWrap() && !applyAll && seals.length) {
       const nextUnique = new Set(seals.map((s, i) => (i === selected ? file : s.file)));
       if (nextUnique.size > 6) {
         status(msg('tooManyPhotos'), true);
-        return;
+        return false;
       }
       const totalBytes = [...nextUnique].reduce((sum, b) => sum + b.size, 0);
       if (totalBytes > maxBytes) {
         status(msg('tooBigTotal', { size: (totalBytes / 1e6).toFixed(1), max: Math.round(maxBytes / (1 << 20)) }), true);
-        return;
+        return false;
       }
     }
     if (file instanceof File && file.name) {
@@ -763,13 +766,13 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     $('framing').hidden = false;
     $<HTMLButtonElement>('forge').disabled = false;
     if (render) refresh();
+    return true;
   }
 
   $<HTMLInputElement>('photo').addEventListener('change', (e) => {
     const f = (e.target as HTMLInputElement).files?.[0];
-    if (f) {
+    if (f && usePhoto(f)) {
       document.querySelectorAll('.tpl').forEach((o) => o.classList.remove('on'));
-      usePhoto(f);
     }
   });
   // templates: photos go as they are; SVGs are drawn onto a canvas and sent as PNG
@@ -791,8 +794,11 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   }
   document.querySelectorAll<HTMLButtonElement>('.tpl').forEach((b) =>
     b.addEventListener('click', async () => {
-      document.querySelectorAll('.tpl').forEach((o) => o.classList.toggle('on', o === b));
-      try { usePhoto(await templateBlob(b.dataset.src!)); } catch (e: any) { status(e.message, true); }
+      try {
+        if (usePhoto(await templateBlob(b.dataset.src!))) {
+          document.querySelectorAll('.tpl').forEach((o) => o.classList.toggle('on', o === b));
+        }
+      } catch (e: any) { status(e.message, true); }
     }));
 
   const drop = $('drop');
@@ -802,9 +808,8 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     e.preventDefault();
     drop.classList.remove('over');
     const f = e.dataTransfer?.files?.[0];
-    if (f) {
+    if (f && usePhoto(f)) {
       document.querySelectorAll('.tpl').forEach((o) => o.classList.remove('on'));
-      usePhoto(f);
     }
   });
 
@@ -819,8 +824,9 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
         const file = item.getAsFile();
         if (file) {
           e.preventDefault();
-          document.querySelectorAll('.tpl').forEach((o) => o.classList.remove('on'));
-          usePhoto(file);
+          if (usePhoto(file)) {
+            document.querySelectorAll('.tpl').forEach((o) => o.classList.remove('on'));
+          }
           return;
         }
       }
