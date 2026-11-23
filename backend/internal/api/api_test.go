@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"image/jpeg"
+	"image/png"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -12,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -342,5 +344,230 @@ func TestMultipartMultiplePhotos(t *testing.T) {
 	rec := do(newServer(t, fakeBuild(nil)), req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("texture: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func jsonPost(path, body string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	return req
+}
+
+func TestNormalTextureJSON(t *testing.T) {
+	h := newServer(t, fakeBuild(nil))
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"relief params", `{"relief":0.5,"shape":"sphere"}`},
+		{"empty object defaults", `{}`},
+		{"multi-seal params without photos", `{"relief":0.4,"seals":[{"photo":1,"dir":[1,0,0],"center":[0.5,0.5],"radius":0.5}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := do(h, jsonPost("/api/texture?size=256&map=normal", tc.body))
+			if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("status=%d ct=%q cc=%q body=%s", rec.Code, rec.Header().Get("Content-Type"), rec.Header().Get("Cache-Control"), rec.Body.String())
+			}
+			img, err := png.Decode(rec.Body)
+			if err != nil || img.Bounds().Dx() != 256 || img.Bounds().Dy() != 256 {
+				t.Fatalf("bad png: err=%v bounds=%v", err, img.Bounds())
+			}
+		})
+	}
+
+	errCases := []struct {
+		name   string
+		req    *http.Request
+		status int
+		code   string
+	}{
+		{"unknown field", jsonPost("/api/texture?size=256&map=normal", `{"relife":0.5}`), 400, "bad_params"},
+		{"invalid param", jsonPost("/api/texture?size=256&map=normal", `{"relief":2}`), 400, "bad_params"},
+		{"malformed json", jsonPost("/api/texture?size=256&map=normal", `{`), 400, "bad_params"},
+		{"trailing data", jsonPost("/api/texture?size=256&map=normal", `{}{}`), 400, "bad_params"},
+		{"too long", jsonPost("/api/texture?size=256&map=normal", `{"layout":"`+strings.Repeat("a", maxParamsBytes)+`"}`), 400, "bad_params"},
+		{"bad content type", func() *http.Request {
+			r := httptest.NewRequest(http.MethodPost, "/api/texture?size=256&map=normal", strings.NewReader("{}"))
+			r.Header.Set("Content-Type", "text/plain")
+			return r
+		}(), 400, "bad_request"},
+		{"cage variant", jsonPost("/api/texture?size=256&map=normal", `{"variant":"cage"}`), 400, "no_preview"},
+		{"bad size", jsonPost("/api/texture?size=99999&map=normal", `{}`), 400, "bad_size"},
+	}
+	for _, c := range errCases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := do(h, c.req)
+			if rec.Code != c.status || errorCode(t, rec) != c.code {
+				t.Errorf("got %d %s, want %d %s", rec.Code, rec.Body.String(), c.status, c.code)
+			}
+		})
+	}
+}
+
+func TestNormalTextureMultipart(t *testing.T) {
+	h := newServer(t, fakeBuild(nil))
+
+	for _, tc := range []struct {
+		name  string
+		photo []byte
+	}{
+		{"without photo", nil},
+		{"with photo", testPhoto(t)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := do(h, upload(t, "/api/texture?size=256&map=normal", tc.photo, `{"relief":0.5}`))
+			if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("status=%d ct=%q cc=%q body=%s", rec.Code, rec.Header().Get("Content-Type"), rec.Header().Get("Cache-Control"), rec.Body.String())
+			}
+			img, err := png.Decode(rec.Body)
+			if err != nil || img.Bounds().Dx() != 256 || img.Bounds().Dy() != 256 {
+				t.Fatalf("bad png: err=%v", err)
+			}
+		})
+	}
+}
+
+func TestRateLimit(t *testing.T) {
+	h := newServer(t, fakeBuild(nil), func(c *Config) {
+		c.RateLimitPerMin = 2
+		c.BuildRateLimitPerMin = 1
+	})
+
+	const origin = "http://localhost:4321"
+	const ipA = "203.0.113.10, 10.0.0.1"
+	const ipB = "203.0.113.11"
+
+	// Burst of 2 texture requests succeeds for IP A.
+	for i := 0; i < 2; i++ {
+		req := jsonPost("/api/texture?size=256&map=normal", `{}`)
+		req.Header.Set("X-Forwarded-For", ipA)
+		req.Header.Set("Origin", origin)
+		if rec := do(h, req); rec.Code != http.StatusOK {
+			t.Fatalf("texture #%d: got %d %s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+
+	// 3rd texture request from IP A gets 429 with Retry-After, rate_limited code, and CORS headers.
+	req := jsonPost("/api/texture?size=256&map=normal", `{}`)
+	req.Header.Set("X-Forwarded-For", ipA)
+	req.Header.Set("Origin", origin)
+	rec := do(h, req)
+	if rec.Code != http.StatusTooManyRequests || errorCode(t, rec) != "rate_limited" {
+		t.Fatalf("3rd texture: got %d %s", rec.Code, rec.Body.String())
+	}
+	ra, err := strconv.Atoi(rec.Header().Get("Retry-After"))
+	if err != nil || ra < 1 {
+		t.Errorf("invalid Retry-After header: %q", rec.Header().Get("Retry-After"))
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != origin {
+		t.Errorf("CORS header missing on 429: got %q, want %q", got, origin)
+	}
+
+	// Separate IP is unaffected.
+	reqB := jsonPost("/api/texture?size=256&map=normal", `{}`)
+	reqB.Header.Set("X-Forwarded-For", ipB)
+	if rec := do(h, reqB); rec.Code != http.StatusOK {
+		t.Errorf("other IP blocked: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// /api/build uses its own bucket: IP A gets 1 build, then 429 on the 2nd.
+	buildReq1 := upload(t, "/api/build", testPhoto(t), "")
+	buildReq1.Header.Set("X-Forwarded-For", ipA)
+	if rec := do(h, buildReq1); rec.Code != http.StatusOK {
+		t.Fatalf("1st build: got %d %s", rec.Code, rec.Body.String())
+	}
+	buildReq2 := upload(t, "/api/build", testPhoto(t), "")
+	buildReq2.Header.Set("X-Forwarded-For", ipA)
+	buildReq2.Header.Set("Origin", origin)
+	recBuild := do(h, buildReq2)
+	if recBuild.Code != http.StatusTooManyRequests || errorCode(t, recBuild) != "rate_limited" {
+		t.Fatalf("2nd build: got %d %s", recBuild.Code, recBuild.Body.String())
+	}
+	if recBuild.Header().Get("Access-Control-Allow-Origin") != origin || recBuild.Header().Get("Retry-After") == "" {
+		t.Errorf("2nd build headers: %v", recBuild.Header())
+	}
+
+	// Read-only endpoints and OPTIONS preflight are unaffected even when IP A is rate-limited.
+	for _, path := range []string{"/healthz", "/api/defaults", "/api/mesh"} {
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		r.Header.Set("X-Forwarded-For", ipA)
+		if rec := do(h, r); rec.Code != http.StatusOK {
+			t.Errorf("GET %s affected by rate limit: %d", path, rec.Code)
+		}
+	}
+	pre := httptest.NewRequest(http.MethodOptions, "/api/texture", nil)
+	pre.Header.Set("X-Forwarded-For", ipA)
+	pre.Header.Set("Origin", origin)
+	pre.Header.Set("Access-Control-Request-Method", "POST")
+	if rec := do(h, pre); rec.Code != http.StatusNoContent {
+		t.Errorf("OPTIONS preflight affected by rate limit: %d", rec.Code)
+	}
+}
+
+func TestIPLimiterRefillAndCleanup(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	lim := newIPLimiter(2) // 2 req/min => 1 token per 30s
+	lim.now = func() time.Time { return now }
+	lim.lastCleanup = now
+	lim.maxEntries = 3
+
+	if ok, _ := lim.allow("1.1.1.1"); !ok {
+		t.Fatal("1st request should pass")
+	}
+	if ok, _ := lim.allow("1.1.1.1"); !ok {
+		t.Fatal("2nd request should pass")
+	}
+	if ok, retry := lim.allow("1.1.1.1"); ok || retry != 30 {
+		t.Fatalf("3rd request: ok=%v retry=%d, want false 30", ok, retry)
+	}
+
+	// Advancing 30s refills 1 token.
+	now = now.Add(30 * time.Second)
+	if ok, _ := lim.allow("1.1.1.1"); !ok {
+		t.Fatal("request after refill should pass")
+	}
+
+	// Cap maxEntries: adding more distinct IPs evicts the oldest so size never exceeds maxEntries.
+	for i, ip := range []string{"2.2.2.2", "3.3.3.3", "4.4.4.4"} {
+		now = now.Add(time.Second * time.Duration(i+1))
+		lim.allow(ip)
+	}
+	if len(lim.buckets) > lim.maxEntries {
+		t.Fatalf("buckets grew past maxEntries: %d > %d", len(lim.buckets), lim.maxEntries)
+	}
+
+	// Advancing past staleAfter evicts all stale entries on next call.
+	now = now.Add(lim.staleAfter + time.Second)
+	lim.allow("5.5.5.5")
+	if len(lim.buckets) != 1 {
+		t.Fatalf("expected stale buckets evicted, got %d", len(lim.buckets))
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	cases := []struct {
+		name   string
+		xff    string
+		remote string
+		want   string
+	}{
+		{"xff first ip", "203.0.113.5, 10.0.0.1", "127.0.0.1:9999", "203.0.113.5"},
+		{"xff ipv6", "2001:db8::1, 10.0.0.1", "127.0.0.1:9999", "2001:db8::1"},
+		{"xff garbage falls back", "not-an-ip, 10.0.0.1", "198.51.100.7:4321", "198.51.100.7"},
+		{"remote ipv6 hostport", "", "[::1]:4321", "::1"},
+		{"remote bare ip", "", "198.51.100.8", "198.51.100.8"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/texture", nil)
+			req.RemoteAddr = c.remote
+			if c.xff != "" {
+				req.Header.Set("X-Forwarded-For", c.xff)
+			}
+			if got := clientIP(req); got != c.want {
+				t.Errorf("clientIP = %q, want %q", got, c.want)
+			}
+		})
 	}
 }

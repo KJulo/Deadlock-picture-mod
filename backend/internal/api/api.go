@@ -3,7 +3,8 @@
 //	GET  /healthz        liveness probe
 //	GET  /api/defaults   default parameters and limits (for the frontend's controls)
 //	GET  /api/mesh       the model exactly as the game reads it (?lod=0..3&shape=sphere|cube|…)
-//	POST /api/texture    multipart photo (+ params) -> sphere texture as JPEG (?size=256..2048)
+//	POST /api/texture    multipart photo (+ params) -> sphere texture as JPEG (?size=256..2048);
+//	                     with ?map=normal accepts JSON params (or multipart) -> normal map PNG
 //	POST /api/build      multipart photo (+ params) -> the .vpk to import in Deadlock Mod Manager
 //
 // Uploads are multipart/form-data with a "photo" file and an optional "params" JSON field whose
@@ -23,6 +24,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,12 +38,14 @@ import (
 
 // Config holds the server's limits.
 type Config struct {
-	MaxUploadBytes int64         // largest accepted photo file
-	MaxConcurrent  int           // builds/textures running at once (each one uses every core)
-	QueueTimeout   time.Duration // how long a request may wait for a free slot before 503
-	AllowedOrigins []string      // CORS: frontend origins allowed to call the API ("*" = any)
-	MultiBuild     func([][]byte, photo.Params) (*build.Result, error)
-	Logger         *slog.Logger
+	MaxUploadBytes       int64         // largest accepted photo file
+	MaxConcurrent        int           // builds/textures running at once (each one uses every core)
+	QueueTimeout         time.Duration // how long a request may wait for a free slot before 503
+	RateLimitPerMin      int           // per-IP /api/texture requests per minute (0 = disabled)
+	BuildRateLimitPerMin int           // per-IP /api/build requests per minute (0 = disabled)
+	AllowedOrigins       []string      // CORS: frontend origins allowed to call the API ("*" = any)
+	MultiBuild           func([][]byte, photo.Params) (*build.Result, error)
+	Logger               *slog.Logger
 }
 
 // BuildFunc builds the mod. In production it is build.Mod with the loaded game files; tests pass
@@ -50,10 +54,12 @@ type BuildFunc func(photoData []byte, p photo.Params) (*build.Result, error)
 
 // Server serves the API.
 type Server struct {
-	cfg   Config
-	build BuildFunc
-	slots chan struct{}       // semaphore: a full channel means every slot is busy
-	mesh  map[string][][]byte // /api/mesh response per shape and LOD, computed once
+	cfg            Config
+	build          BuildFunc
+	slots          chan struct{}       // semaphore: a full channel means every slot is busy
+	mesh           map[string][][]byte // /api/mesh response per shape and LOD, computed once
+	textureLimiter *ipLimiter
+	buildLimiter   *ipLimiter
 }
 
 // New creates a server.
@@ -79,10 +85,17 @@ func New(cfg Config, b BuildFunc) (*Server, error) {
 			meshes[name] = append(meshes[name], m)
 		}
 	}
-	return &Server{cfg: cfg, build: b, slots: make(chan struct{}, cfg.MaxConcurrent), mesh: meshes}, nil
+	s := &Server{cfg: cfg, build: b, slots: make(chan struct{}, cfg.MaxConcurrent), mesh: meshes}
+	if cfg.RateLimitPerMin > 0 {
+		s.textureLimiter = newIPLimiter(cfg.RateLimitPerMin)
+	}
+	if cfg.BuildRateLimitPerMin > 0 {
+		s.buildLimiter = newIPLimiter(cfg.BuildRateLimitPerMin)
+	}
+	return s, nil
 }
 
-// Handler returns the routes wrapped in the middlewares (outermost first: recover, log, CORS).
+// Handler returns the routes wrapped in the middlewares (outermost first: recover, log, CORS, security, rate limit).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
@@ -90,7 +103,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/mesh", s.meshHandler)
 	mux.HandleFunc("POST /api/texture", s.texture)
 	mux.HandleFunc("POST /api/build", s.buildHandler)
-	return s.recoverer(s.logger(s.cors(securityHeaders(mux))))
+	return s.recoverer(s.logger(s.cors(securityHeaders(s.rateLimit(mux)))))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -142,6 +155,73 @@ func (s *Server) classify(r *http.Request, err error) *apiError {
 
 const maxParamsBytes = 16 << 10
 
+func decodeParams(raw []byte, p *photo.Params) error {
+	if len(raw) > maxParamsBytes {
+		return &apiError{http.StatusBadRequest, "bad_params", "params too long"}
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields() // a typo in a field name is an error, not silently ignored
+	if err := dec.Decode(p); err != nil {
+		return &apiError{http.StatusBadRequest, "bad_params", "params: " + err.Error()}
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		return &apiError{http.StatusBadRequest, "bad_params", "params: trailing data"}
+	}
+	return nil
+}
+
+// readNormalParams reads photo.Params for a normal-map request without requiring a photo upload.
+// Accepts application/json directly, or multipart/form-data (with or without photo parts) for
+// backwards compatibility.
+func (s *Server) readNormalParams(w http.ResponseWriter, r *http.Request) (photo.Params, error) {
+	p := photo.DefaultParams()
+	mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	switch mediaType {
+	case "application/json":
+		raw, err := io.ReadAll(io.LimitReader(r.Body, maxParamsBytes+1))
+		if err != nil {
+			return p, s.bodyError(err)
+		}
+		if err := decodeParams(raw, &p); err != nil {
+			return p, err
+		}
+	case "multipart/form-data":
+		r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxUploadBytes+maxParamsBytes+64<<10)
+		mr, err := r.MultipartReader()
+		if err != nil {
+			return p, &apiError{http.StatusBadRequest, "bad_request", "expected application/json or multipart/form-data"}
+		}
+		for {
+			part, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return p, s.bodyError(err)
+			}
+			if part.FormName() == "params" {
+				raw, err := io.ReadAll(io.LimitReader(part, maxParamsBytes+1))
+				part.Close()
+				if err != nil {
+					return p, s.bodyError(err)
+				}
+				if err := decodeParams(raw, &p); err != nil {
+					return p, err
+				}
+				continue
+			}
+			part.Close()
+		}
+	default:
+		return p, &apiError{http.StatusBadRequest, "bad_request", "expected application/json or multipart/form-data"}
+	}
+	if err := p.Validate(); err != nil {
+		return p, err
+	}
+	return p, nil
+}
+
 // readUpload streams the multipart body: the photo goes straight into memory (r.ParseMultipartForm
 // would spill large files to temporary files on disk, which we never want for user photos).
 func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) ([][]byte, photo.Params, error) {
@@ -170,28 +250,28 @@ func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) ([][]byte, p
 		}
 		if index >= 0 {
 			if data[index] != nil {
+				part.Close()
 				return nil, p, &apiError{http.StatusBadRequest, "bad_request", "duplicate photo"}
 			}
 			data[index], err = io.ReadAll(io.LimitReader(part, s.cfg.MaxUploadBytes-total+1))
 			if err != nil {
+				part.Close()
 				return nil, p, s.bodyError(err)
 			}
 			total += int64(len(data[index]))
 			if total > s.cfg.MaxUploadBytes {
+				part.Close()
 				return nil, p, &apiError{http.StatusRequestEntityTooLarge, "photo_too_large", "photos exceed upload limit"}
 			}
 		} else if name == "params" {
 			raw, err := io.ReadAll(io.LimitReader(part, maxParamsBytes+1))
 			if err != nil {
+				part.Close()
 				return nil, p, s.bodyError(err)
 			}
-			if len(raw) > maxParamsBytes {
-				return nil, p, &apiError{http.StatusBadRequest, "bad_params", "params too long"}
-			}
-			dec := json.NewDecoder(bytes.NewReader(raw))
-			dec.DisallowUnknownFields() // a typo in a field name is an error, not silently ignored
-			if err := dec.Decode(&p); err != nil {
-				return nil, p, &apiError{http.StatusBadRequest, "bad_params", "params: " + err.Error()}
+			if err := decodeParams(raw, &p); err != nil {
+				part.Close()
+				return nil, p, err
 			}
 		}
 		part.Close()
@@ -291,6 +371,35 @@ func (s *Server) texture(w http.ResponseWriter, r *http.Request) {
 		}
 		size = n
 	}
+	if r.URL.Query().Get("map") == "normal" {
+		p, err := s.readNormalParams(w, r)
+		if err != nil {
+			writeError(w, s.classify(r, err))
+			return
+		}
+		if p.Variant != "sphere" {
+			writeError(w, &apiError{http.StatusBadRequest, "no_preview", "texture preview is only available for the sphere variant"})
+			return
+		}
+		release, err := s.acquire(r.Context())
+		if err != nil {
+			writeError(w, s.classify(r, err))
+			return
+		}
+		defer release()
+
+		tex, _, err := photo.ReliefTextures(p, size)
+		if err != nil {
+			writeError(w, s.classify(r, err))
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-store")
+		if err := png.Encode(w, tex); err != nil {
+			s.cfg.Logger.ErrorContext(r.Context(), "normal PNG", "err", err)
+		}
+		return
+	}
 	data, p, err := s.readUpload(w, r)
 	if err != nil {
 		writeError(w, s.classify(r, err))
@@ -307,19 +416,6 @@ func (s *Server) texture(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 
-	if r.URL.Query().Get("map") == "normal" {
-		tex, _, err := photo.ReliefTextures(p, size)
-		if err != nil {
-			writeError(w, s.classify(r, err))
-			return
-		}
-		w.Header().Set("Content-Type", "image/png")
-		w.Header().Set("Cache-Control", "no-store")
-		if err := png.Encode(w, tex); err != nil {
-			s.cfg.Logger.ErrorContext(r.Context(), "normal PNG", "err", err)
-		}
-		return
-	}
 	imgs := make([]*photo.RGB, len(data))
 	for i, d := range data {
 		imgs[i], err = photo.Load(d, p)
