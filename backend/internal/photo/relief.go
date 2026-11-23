@@ -24,6 +24,7 @@ func ReliefTextures(p Params, size int) (*image.NRGBA, *image.NRGBA, error) {
 	inner := p.StickerDeg * math.Pi / 180
 	width := p.RingDeg * math.Pi / 180
 	shape, _ := mesh.ShapeByName(p.Shape)
+	useAtlas := p.Shape != mesh.MedallionsShape && mesh.AtlasPowerByName(p.Shape) != 0
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
 			i := (y*size + x) * 4
@@ -44,13 +45,23 @@ func ReliefTextures(p Params, size int) (*image.NRGBA, *image.NRGBA, error) {
 				e := mesh.MedallionDir(k, 0.00001, 0, p.MedallionRad()).Sub(mesh.MedallionAxes[k].Scale(math.Cos(0.00001 * p.MedallionRad()))).Normalize()
 				t = e.Sub(n.Scale(e.Dot(n))).Normalize()
 			} else {
-				th, ph := v*math.Pi, u*2*math.Pi
-				d = mesh.Vec3(sphereDirection(u, v))
+				if useAtlas {
+					var ok bool
+					d, t, ok = (mesh.CubeAtlas{}).TexelDir(u, v)
+					if !ok {
+						continue
+					}
+				} else {
+					d, t, _ = (mesh.Equirect{}).TexelDir(u, v)
+				}
 				n = d
-				t = mesh.Vec3{-math.Sin(ph), math.Cos(ph), 0}
-				if shape != nil {
+				if useAtlas && shape != nil {
+					n, t = mesh.SurfaceFrame(shape, d, t)
+				}
+				if shape != nil && !useAtlas {
+					th, ph := v*math.Pi, u*2*math.Pi
 					at := func(a, b float64) mesh.Vec3 {
-						q := mesh.Vec3{math.Sin(a) * math.Cos(b), math.Sin(a) * math.Sin(b), math.Cos(a)}
+						q, _, _ := (mesh.Equirect{}).TexelDir(b/(2*math.Pi), a/math.Pi)
 						return q.Scale(shape(q))
 					}
 					const h = 1e-4

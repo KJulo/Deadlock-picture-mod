@@ -62,7 +62,7 @@ func TestMatchesPythonReference(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := SphereTexture(m, p, size)
+			got, err := SphereTextureEquirect(m, p, size)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -313,7 +313,7 @@ func TestSingleLayoutSizeFollowsStickerDeg(t *testing.T) {
 	for _, deg := range []float64{30, 60, 90} {
 		p := DefaultParams()
 		p.Layout, p.StickerDeg, p.RingDeg, p.BgColor = "single", deg, 0, [3]uint8{1, 1, 1}
-		tex, err := SphereTexture(img, p, 360)
+		tex, err := SphereTextureEquirect(img, p, 360)
 		if err != nil {
 			t.Fatal(err)
 		}

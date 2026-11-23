@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/KJulo/Deadlock-picture-mod/backend/internal/mesh"
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/templates"
 )
 
@@ -41,5 +42,17 @@ func TestMatchesPythonReference(t *testing.T) {
 	}
 	if len(lods) != 4 || lods[0].Grid.NU != 76 {
 		t.Errorf("unexpected LOD geometry: %+v", lods[0].Grid)
+	}
+}
+
+// The quality selector must use the same budgets as the actual model.
+func TestQualityBudgetsMatchModel(t *testing.T) {
+	if len(LODs) != len(mesh.QualityBudgets) {
+		t.Fatal("quality budgets differ from model LODs")
+	}
+	for i, lod := range LODs {
+		if mesh.QualityBudgets[i] != [2]int{lod.VertexCount, lod.IndexCount} {
+			t.Fatalf("LOD%d quality budget is stale", i)
+		}
 	}
 }
