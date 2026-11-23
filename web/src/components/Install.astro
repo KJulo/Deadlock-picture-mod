@@ -1,6 +1,7 @@
 ---
 import { useDict } from '../i18n/ui';
 const t = useDict(Astro.currentLocale);
+const consoleCmd = 'sv_cheats 1; citadel_give_gold 5000 1; kill';
 ---
 <section id="instalar" class="install wrap" aria-labelledby="instalar-title">
   <h2 id="instalar-title" class="section-title">{t.install.title}</h2>
@@ -13,11 +14,55 @@ const t = useDict(Astro.currentLocale);
         </li>
       ))}
     </ol>
-    <pre><code>sv_cheats 1
+    <div class="console-block">
+      <div class="console-head">
+        <span class="caps console-label">{t.install.console}</span>
+        <button
+          type="button"
+          class="copy-btn caps"
+          id="copy-console"
+          data-cmd={consoleCmd}
+          data-copy={t.install.copy}
+          data-copied={t.install.copied}
+        >{t.install.copy}</button>
+      </div>
+      <pre><code>sv_cheats 1
 citadel_give_gold 5000 1
 kill</code></pre>
+    </div>
   </div>
 </section>
+
+<script>
+  const btn = document.getElementById('copy-console') as HTMLButtonElement | null;
+  if (btn) {
+    let resetTimer = 0;
+    btn.addEventListener('click', async () => {
+      const cmd = btn.dataset.cmd ?? '';
+      let ok = false;
+      try {
+        await navigator.clipboard.writeText(cmd);
+        ok = true;
+      } catch {
+        const ta = Object.assign(document.createElement('textarea'), { value: cmd });
+        ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+        document.body.append(ta);
+        ta.select();
+        try { ok = document.execCommand('copy'); } catch { /* ignore */ }
+        ta.remove();
+      }
+      if (!ok) return;
+      clearTimeout(resetTimer);
+      btn.textContent = btn.dataset.copied ?? '';
+      btn.classList.add('copied');
+      resetTimer = window.setTimeout(() => {
+        btn.textContent = btn.dataset.copy ?? '';
+        btn.classList.remove('copied');
+      }, 1800);
+    });
+  }
+</script>
+
 <style>
   .install { padding-block: clamp(40px, 6vw, 72px) 24px; max-width: 860px; }
   .card { padding: 0; }
@@ -30,6 +75,20 @@ kill</code></pre>
   .steps p { margin: 0; color: var(--cream-2); }
   .steps :global(strong) { color: var(--cream); font-weight: 500; }
   .steps :global(code) { color: var(--gold-bright); background: var(--ink-3); padding: 1px 5px; }
+  .console-block { background: var(--ink-0); }
+  .console-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 8px clamp(18px, 3vw, 28px);
+    background: var(--ink-1); border-bottom: 1px solid var(--line);
+  }
+  .console-label { color: var(--muted); }
+  .copy-btn {
+    padding: 5px 12px; cursor: pointer;
+    color: var(--cream); background: var(--ink-3); border: 1px solid var(--line);
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  .copy-btn:hover { border-color: var(--gold); color: var(--gold-bright); }
+  .copy-btn.copied { border-color: var(--soul); color: var(--soul); }
   pre {
     margin: 0; padding: 18px clamp(18px, 3vw, 28px); overflow-x: auto;
     background: var(--ink-0); color: var(--soul);

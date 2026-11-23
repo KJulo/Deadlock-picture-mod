@@ -12,6 +12,7 @@ const backgrounds = [
 ];
 const rings = [[sw.bone, '#ebebeb'], [sw.brass, '#c9a45c'], [sw.onyx, '#141414'], [sw.soul, '#29ffc9']];
 const layouts = (['cube6', 'twice', 'wrap', 'single'] as const).map((value) => ({ value, ...w.layouts[value] }));
+const backModes = (['mirror', 'flip', 'color'] as const).map((value) => ({ value, ...w.backModes[value] }));
 // 3D shapes (backend mesh.ShapeNames). Each shape picks its own texture layout.
 const shapeIcons = {
   sphere: '<circle cx="24" cy="24" r="18"/>',
@@ -43,7 +44,12 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   <div class="stage">
     <div class="arch">
       <canvas id="view" aria-label={w.canvas}></canvas>
-      <div class="overlay" id="overlay" hidden></div>
+      <div class="overlay" id="overlay" role="status" aria-live="polite" hidden>
+        <div class="overlay-body">
+          <p id="overlay-text"></p>
+          <button type="button" class="tool overlay-retry" id="overlay-retry" hidden>{w.retry}</button>
+        </div>
+      </div>
       <div class="view-tools" role="toolbar" aria-label={w.history}>
         <button type="button" class="vt" id="undo" disabled title={`${w.undo} (Ctrl+Z)`} aria-label={w.undo}><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15.0049 19.5L15.8231 18.6429C19.4677 14.8247 16.7614 8.5 11.4829 8.5H6.50488M6.50488 8.5L10.5049 12.5M6.50488 8.5L10.5049 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <button type="button" class="vt" id="redo" disabled title={`${w.redo} (Ctrl+Shift+Z)`} aria-label={w.redo}><svg class="flip" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15.0049 19.5L15.8231 18.6429C19.4677 14.8247 16.7614 8.5 11.4829 8.5H6.50488M6.50488 8.5L10.5049 12.5M6.50488 8.5L10.5049 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -93,18 +99,21 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
         </div>
 
         <div id="seal-list" class="seal-list" role="group" aria-label={w.sealList}></div>
-        <button type="button" class="tool" id="add-seal">{w.addSeal}</button>
+        <div class="seal-actions">
+          <button type="button" class="tool" id="add-seal">{w.addSeal}</button>
+          <button type="button" class="tool" id="apply-all" hidden>{w.applyAll}</button>
+        </div>
         <p class="hint" id="move-limit" hidden>{w.moveLimit}</p>
         <div class="framing" id="framing" hidden>
           <canvas class="seal-edit" id="seal" role="img" aria-label={w.thumbAlt}></canvas>
           <div class="frame-tools">
             <p class="hint">{w.hint}</p>
             <label class="range">
-              <span class="caps">{w.zoom}</span>
+              <span class="range-head"><span class="caps">{w.zoom}</span><output id="out-zoom" for="zoom">1.00×</output></span>
               <input type="range" id="zoom" min="1" max="5" step="0.01" value="1" />
             </label>
             <label class="range">
-              <span class="caps">{w.turn}</span>
+              <span class="range-head"><span class="caps">{w.turn}</span><output id="out-turn" for="turn">0°</output></span>
               <input type="range" id="turn" min="-180" max="180" step="1" value="0" />
             </label>
             <div class="frame-buttons">
@@ -146,15 +155,15 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
         </fieldset>
         <div class="sticker-opts" id="sticker-opts">
           <label class="range">
-            <span class="caps">{w.stickerSize}</span>
+            <span class="range-head"><span class="caps">{w.stickerSize}</span><output id="out-sticker_deg" for="sticker_deg">40°</output></span>
             <input type="range" id="sticker_deg" min="20" max="45" step="1" value="40" />
           </label>
           <label class="range">
-            <span class="caps">{w.ringWidth}</span>
+            <span class="range-head"><span class="caps">{w.ringWidth}</span><output id="out-ring_deg" for="ring_deg">3°</output></span>
             <input type="range" id="ring_deg" min="0" max="8" step="0.5" value="3" />
           </label>
           <label class="range">
-            <span class="caps">{w.relief}</span>
+            <span class="range-head"><span class="caps">{w.relief}</span><output id="out-relief" for="relief">0%</output></span>
             <input type="range" id="relief" min="0" max="1" step="0.05" value="0" />
           </label>
         </div>
@@ -183,17 +192,56 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
               <span style={`--c:${hex}`}></span><span class="visually-hidden">{name}</span>
             </label>
           ))}
+          <label class="swatch custom" title={w.otherColor}>
+            <input type="color" id="ring-custom" value="#ebebeb" />
+            <span class="visually-hidden">{w.otherRing}</span>
+          </label>
         </fieldset>
+
+        <details class="advanced" id="advanced">
+          <summary class="caps">{w.advanced}</summary>
+          <div class="advanced-body">
+            <fieldset class="back-opts" id="back-opts" hidden>
+              <legend class="caps">{w.wrapBack}</legend>
+              <div class="back-row">
+                {backModes.map((m, i) => (
+                  <label class="back-opt" title={m.note}>
+                    <input type="radio" name="back" value={m.value} checked={i === 0} />
+                    <span>{m.name}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <div class="advanced-sliders">
+              <label class="range">
+                <span class="range-head"><span class="caps">{w.contrast}</span><output id="out-contrast" for="contrast">1.05</output></span>
+                <input type="range" id="contrast" min="0.5" max="2" step="0.05" value="1.05" />
+              </label>
+              <label class="range">
+                <span class="range-head"><span class="caps">{w.saturation}</span><output id="out-saturation" for="saturation">1.10</output></span>
+                <input type="range" id="saturation" min="0" max="2" step="0.05" value="1.10" />
+              </label>
+              <label class="range">
+                <span class="range-head"><span class="caps">{w.roughness}</span><output id="out-roughness" for="roughness">0.69</output></span>
+                <input type="range" id="roughness" min="0" max="1" step="0.05" value="0.69" />
+              </label>
+            </div>
+          </div>
+        </details>
       </li>
 
       <li class="act">
         <h3><span class="numeral" aria-hidden="true">04</span> {w.forgeTitle}</h3>
+        <label class="mod-name">
+          <span class="caps">{w.modName}</span>
+          <input type="text" id="mod-name" maxlength="48" autocomplete="off" spellcheck="false" placeholder="soul_container_sphere" />
+        </label>
         <button type="button" class="forge" id="forge" disabled>
           <span>{w.forgeButton}</span>
         </button>
         <p class="status" id="status" role="status" aria-live="polite">{t.status.needPhoto}</p>
         <div class="cover" id="cover" hidden>
-          <a class="tool cover-link" id="cover-link" download="soul_container_mod_cover.png">{w.coverButton}</a>
+          <a class="tool cover-link" id="cover-link" download="soul_container_sphere_cover.png">{w.coverButton}</a>
           <p class="hint">{w.coverHint}</p>
         </div>
       </li>
@@ -219,15 +267,62 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     $('status').textContent = text;
     $('status').classList.toggle('error', error);
   };
-  const overlay = (text: string | null) => {
+  const overlay = (text: string | null, retry = false) => {
     $('overlay').hidden = !text;
-    $('overlay').textContent = text ?? '';
+    $('overlay-text').textContent = text ?? '';
+    $('overlay-retry').hidden = !retry;
   };
+
+  const PREVIEW_SIZE = 1024;
+  const PREVIEW_MAX_DIM = 1600;
+  const PREVIEW_MAX_BYTES = 2 << 20;
+  const previewCache = new WeakMap<Blob, Promise<Blob>>();
+  // Downscale large photos client-side for /api/texture previews only; /api/build keeps originals.
+  function previewBlob(blob: Blob): Promise<Blob> {
+    let cached = previewCache.get(blob);
+    if (!cached) {
+      cached = (async () => {
+        if (typeof createImageBitmap !== 'function') return blob;
+        let bmp: ImageBitmap | null = null;
+        try {
+          bmp = await createImageBitmap(blob);
+          const longest = Math.max(bmp.width, bmp.height);
+          if (longest <= PREVIEW_MAX_DIM && blob.size <= PREVIEW_MAX_BYTES) return blob;
+          const scale = longest > PREVIEW_MAX_DIM ? PREVIEW_MAX_DIM / longest : 1;
+          const w = Math.max(1, Math.round(bmp.width * scale));
+          const h = Math.max(1, Math.round(bmp.height * scale));
+          const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return blob;
+          ctx.drawImage(bmp, 0, 0, w, h);
+          const out = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, 'image/jpeg', 0.9));
+          if (!out) return blob;
+          return longest > PREVIEW_MAX_DIM || out.size < blob.size ? out : blob;
+        } catch {
+          return blob;
+        } finally {
+          bmp?.close();
+        }
+      })();
+      previewCache.set(blob, cached);
+    }
+    return cached;
+  }
 
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let viewer: any = null; // the 3D viewer (three.js is loaded lazily, after the page shows)
   let maxBytes = 15 << 20;
   let photo: Blob | null = null;
+  let sampleBlob: Blob | null = null;
+  const fileNames = new WeakMap<Blob, string>();
+  const sanitizeSlug = (raw: string) =>
+    raw
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '_')
+      .replace(/^[_-]+|[_-]+$/g, '')
+      .slice(0, 48);
   // framing: the photo point at the seal centre (0..1), zoom (1 = disc of half the shorter side)
   // and clockwise turn in degrees. The seal editor and the backend map photos the same way.
   const frame = { x: 0.5, y: 0.5, zoom: 1, turn: 0 };
@@ -235,6 +330,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   let seals: Seal[] = [];
   let selected = 0;
   const axes = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  const isAllSample = () => sampleBlob !== null && seals.length > 0 && seals.every((s) => s.file === sampleBlob);
   function resetSeals() {
     if (!photo) return;
     const n = isMedallions() || checked('layout') === 'cube6' ? 6 : checked('layout') === 'twice' ? 2 : 1;
@@ -245,6 +341,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     const list = $('seal-list'); list.replaceChildren();
     list.hidden = isWrap();
     $('add-seal').hidden = isWrap() || isMedallions();
+    $('apply-all').hidden = isWrap() || seals.length <= 1;
     $('move-limit').hidden = !isWrap() && !isMedallions();
     $('legend-move').hidden = isWrap() || isMedallions();
     seals.forEach((s,i) => {
@@ -260,6 +357,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   function selectSeal(i: number) {
     selected = i; const s = seals[i]; if (!s) return;
     photo = s.file; Object.assign(frame,s.frame); zoomInput.value = String(frame.zoom); turnInput.value = String(frame.turn);
+    syncOutputs(); syncModPlaceholder();
     if (pic.src) URL.revokeObjectURL(pic.src); pic.onload = drawSeal; pic.src = URL.createObjectURL(photo); renderSeals();
   }
   $('add-seal').addEventListener('click', () => {
@@ -274,36 +372,62 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     }
     seals.push({dir,file:photo,frame:{...frame}}); selectSeal(seals.length-1); refresh();
   });
+  $('apply-all').addEventListener('click', () => {
+    const cur = seals[selected];
+    if (!cur) return;
+    seals.forEach((s) => { s.file = cur.file; s.frame = { ...cur.frame }; });
+    renderSeals();
+    refresh();
+  });
   let inflight: AbortController | null = null;
   let timer = 0;
 
   // --- viewer --------------------------------------------------------------------------------
-  async function init() {
-  try {
-    const [{ createViewer }, mesh, defaults] = await Promise.all([
-      import('../lib/preview/viewer.js'), api.mesh(3), api.defaults(),
-    ]);
-    maxBytes = defaults.max_upload_bytes;
-    $('max-mb').textContent = String(Math.round(maxBytes / (1 << 20)));
-    viewer = createViewer($<HTMLCanvasElement>('view'), { mesh, background: 0x15130f, onSelect: (i: number) => selectSeal(i), onMove: (dir: number[], done: boolean) => { seals[selected].dir = dir; renderSeals(); clearTimeout(timer); if (done) refresh(); else { timer = window.setTimeout(() => refresh(512), 100); } } });
-    if (reducedMotion) { viewer.set({ spin: false }); $<HTMLInputElement>('opt-spin').checked = false; }
-    await showSample();
-    // The sample cat is a real photo from the start, so every control works before the user
-    // picks one. Its texture is already on screen (pre-rendered), so no request is needed yet.
-    if (!photo) {
-      const cat = await fetch('/sample.jpg');
-      if (cat.ok && !photo) {
-        usePhoto(await cat.blob(), false);
-        document.querySelector('.tpl[data-src="/sample.jpg"]')?.classList.add('on');
-        status('');
-        checkpoint();
-      }
+  let initializing = false;
+  function syncViewerUniforms() {
+    if (viewer?.material?.uniforms?.uRoughness) {
+      viewer.material.uniforms.uRoughness.value = +$<HTMLInputElement>('roughness').value;
     }
-  } catch {
-    overlay(msg('offline'));
-    status(msg('noServer'), true);
   }
+  async function init() {
+    if (initializing || viewer) return;
+    initializing = true;
+    overlay(msg('connecting'));
+    try {
+      const [{ createViewer }, mesh, defaults] = await Promise.all([
+        import('../lib/preview/viewer.js'), api.mesh(3), api.defaults(),
+      ]);
+      maxBytes = defaults.max_upload_bytes;
+      $('max-mb').textContent = String(Math.round(maxBytes / (1 << 20)));
+      viewer = createViewer($<HTMLCanvasElement>('view'), { mesh, background: 0x15130f, onSelect: (i: number) => selectSeal(i), onMove: (dir: number[], done: boolean) => { seals[selected].dir = dir; renderSeals(); clearTimeout(timer); if (done) refresh(); else { timer = window.setTimeout(() => refresh(512), 100); } } });
+      if (reducedMotion) { viewer.set({ spin: false }); $<HTMLInputElement>('opt-spin').checked = false; }
+      syncViewerUniforms();
+      overlay(null);
+      if (!photo) {
+        await showSample();
+        // The sample cat is a real photo from the start, so every control works before the user
+        // picks one. Its texture is already on screen (pre-rendered), so no request is needed yet.
+        const cat = await fetch('/sample.jpg');
+        if (cat.ok && !photo) {
+          sampleBlob = await cat.blob();
+          usePhoto(sampleBlob, { render: false, applyAll: true });
+          document.querySelector('.tpl[data-src="/sample.jpg"]')?.classList.add('on');
+          status('');
+          checkpoint();
+        }
+      } else {
+        renderSeals();
+        meshDirty = checked('shape') !== 'sphere' || isMedallions();
+        refresh();
+      }
+    } catch {
+      overlay(msg('offline'), true);
+      status(msg('noServer'), true);
+    } finally {
+      initializing = false;
+    }
   }
+  $('overlay-retry').addEventListener('click', () => { status(''); init(); });
   init();
 
   // Before any photo, the viewer shows the cat from a pre-rendered texture (0 API calls), laid
@@ -333,6 +457,24 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   const checked = (name: string) =>
     (document.querySelector(`input[name="${name}"]:checked`) as HTMLInputElement | null)?.value;
   let bgCustom: string | null = null;
+  let ringCustom: string | null = null;
+  const syncCustomSwatches = () => {
+    $('bg-custom').parentElement?.classList.toggle('on', bgCustom !== null);
+    $('ring-custom').parentElement?.classList.toggle('on', ringCustom !== null);
+  };
+
+  function defaultModSlug() {
+    const shape = sanitizeSlug(checked('shape') ?? 'sphere') || 'sphere';
+    const base = photo ? fileNames.get(photo) : undefined;
+    return base ? `soul_container_${shape}_${base}`.slice(0, 64).replace(/[_-]+$/, '') : `soul_container_${shape}`;
+  }
+  function modSlug() {
+    const custom = sanitizeSlug($<HTMLInputElement>('mod-name').value);
+    return custom || defaultModSlug();
+  }
+  function syncModPlaceholder() {
+    $<HTMLInputElement>('mod-name').placeholder = defaultModSlug();
+  }
 
   function params() {
     return {
@@ -346,21 +488,27 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
       ring_deg: +$<HTMLInputElement>('ring_deg').value,
       relief: +$<HTMLInputElement>('relief').value,
       bg_color: hex(bgCustom ?? checked('bg') ?? '#18788c'),
-      ring_color: hex(checked('ring') ?? '#ebebeb'),
+      ring_color: hex(ringCustom ?? checked('ring') ?? '#ebebeb'),
+      back: checked('back') ?? 'mirror',
+      contrast: +$<HTMLInputElement>('contrast').value,
+      saturation: +$<HTMLInputElement>('saturation').value,
+      roughness: +$<HTMLInputElement>('roughness').value,
     };
   }
 
   const uniquePhotos = () => Array.from(new Set(seals.map(s => s.file)));
   let meshDirty = false;
-  async function refresh(size = 2048) {
+  async function refresh(size = PREVIEW_SIZE) {
     if (!photo || !viewer) return;
-    if (size === 2048 && !restoring) scheduleCheckpoint();
+    if (size === PREVIEW_SIZE && !restoring) scheduleCheckpoint();
     inflight?.abort();
     const request = inflight = new AbortController();
-    const files = isWrap() ? [photo] : uniquePhotos(), values = params();
+    const rawFiles = isWrap() ? [photo] : uniquePhotos(), values = params();
     const needMesh = meshDirty;
     status(msg('rendering'));
     try {
+      const files = await Promise.all(rawFiles.map(previewBlob));
+      if (request.signal.aborted) return;
       const [color, normal, nextMesh] = await Promise.all([
         api.texture(files, values, size, request.signal),
         values.relief > 0 ? api.normal(files, values, size, request.signal) : Promise.resolve(null),
@@ -391,6 +539,8 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     $('layouts').hidden = isMedallions(); // medallions are always the six seals
     $('sticker-opts').hidden = wrap;
     $('ring-colors').hidden = wrap;
+    $('back-opts').hidden = !wrap;
+    syncOutputs();
     renderSeals();
   }
   // The texture layout depends on the shape (the backend picks a cube atlas or the
@@ -400,6 +550,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   document.querySelectorAll('input[name="shape"]').forEach((el) => el.addEventListener('change', () => {
     if (isMedallions() !== wasMedallions) resetSeals();
     syncLayout();
+    syncModPlaceholder();
     clearTimeout(timer);
     if (photo) { meshDirty = true; refresh(); }
     else { reloadMesh(); showSample(); }
@@ -409,18 +560,36 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   document.querySelectorAll('input[name="layout"]').forEach((el) =>
     el.addEventListener('change', () => { resetSeals(); syncLayout(); later(); }));
   document.querySelectorAll('input[name="bg"]').forEach((el) =>
-    el.addEventListener('change', () => { bgCustom = null; later(); }));
-  document.querySelectorAll('input[name="ring"]').forEach((el) => el.addEventListener('change', later));
+    el.addEventListener('change', () => { bgCustom = null; syncCustomSwatches(); later(); }));
+  document.querySelectorAll('input[name="ring"]').forEach((el) =>
+    el.addEventListener('change', () => { ringCustom = null; syncCustomSwatches(); drawSeal(); later(); }));
+  document.querySelectorAll('input[name="back"]').forEach((el) => el.addEventListener('change', later));
   $<HTMLInputElement>('bg-custom').addEventListener('input', (e) => {
     bgCustom = (e.target as HTMLInputElement).value;
     document.querySelectorAll<HTMLInputElement>('input[name="bg"]').forEach((r) => (r.checked = false));
+    syncCustomSwatches();
     later();
   });
-  $('relief').addEventListener('input', later);
-  let meshTimer = 0;
-  for (const id of ['sticker_deg', 'ring_deg']) $(id).addEventListener('input', () => {
+  $<HTMLInputElement>('ring-custom').addEventListener('input', (e) => {
+    ringCustom = (e.target as HTMLInputElement).value;
+    document.querySelectorAll<HTMLInputElement>('input[name="ring"]').forEach((r) => (r.checked = false));
+    syncCustomSwatches();
+    drawSeal();
     later();
-    if (isMedallions()) { clearTimeout(meshTimer); meshTimer = window.setTimeout(reloadMesh, 120); }
+  });
+  for (const id of ['relief', 'contrast', 'saturation']) $(id).addEventListener('input', () => {
+    syncOutputs();
+    later();
+  });
+  $('roughness').addEventListener('input', () => {
+    syncOutputs();
+    syncViewerUniforms();
+    if (!restoring) scheduleCheckpoint();
+  });
+  for (const id of ['sticker_deg', 'ring_deg']) $(id).addEventListener('input', () => {
+    syncOutputs();
+    if (isMedallions()) meshDirty = true;
+    later();
   });
 
   // --- photo + framing -----------------------------------------------------------------------
@@ -430,6 +599,19 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   const pic = new Image();
   const zoomInput = $<HTMLInputElement>('zoom');
   const turnInput = $<HTMLInputElement>('turn');
+
+  function syncOutputs() {
+    $('out-zoom').textContent = `${(+zoomInput.value).toFixed(2)}×`;
+    $('out-turn').textContent = `${Math.round(+turnInput.value)}°`;
+    $('out-sticker_deg').textContent = `${+$<HTMLInputElement>('sticker_deg').value}°`;
+    $('out-ring_deg').textContent = `${+$<HTMLInputElement>('ring_deg').value}°`;
+    $('out-relief').textContent = `${Math.round(+$<HTMLInputElement>('relief').value * 100)}%`;
+    $('out-contrast').textContent = (+$<HTMLInputElement>('contrast').value).toFixed(2);
+    $('out-saturation').textContent = (+$<HTMLInputElement>('saturation').value).toFixed(2);
+    $('out-roughness').textContent = (+$<HTMLInputElement>('roughness').value).toFixed(2);
+  }
+  syncOutputs();
+  syncModPlaceholder();
 
   function drawSeal() {
     const dpr = devicePixelRatio || 1;
@@ -459,7 +641,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     if (ringFrac > 0) {
       const width = (R * ringFrac) / (1 + ringFrac);
       ctx.lineWidth = width;
-      ctx.strokeStyle = checked('ring') ?? '#ebebeb';
+      ctx.strokeStyle = ringCustom ?? checked('ring') ?? '#ebebeb';
       ctx.beginPath();
       ctx.arc(R, R, R - width / 2, 0, 2 * Math.PI);
       ctx.stroke();
@@ -479,6 +661,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     frame.turn = ((((frame.turn + 180) % 360) + 360) % 360) - 180; // keep within -180..180
     zoomInput.value = String(frame.zoom);
     turnInput.value = String(Math.round(frame.turn));
+    syncOutputs();
     if (seals[selected]) seals[selected].frame = {...frame};
     drawSeal();
     later();
@@ -534,23 +717,49 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   addEventListener('resize', drawSeal);
   // the ring preview follows its controls
   for (const id of ['ring_deg', 'sticker_deg']) $(id).addEventListener('input', drawSeal);
-  document.querySelectorAll('input[name="ring"], input[name="layout"], input[name="shape"]').forEach((el) =>
+  document.querySelectorAll('input[name="layout"], input[name="shape"]').forEach((el) =>
     el.addEventListener('change', drawSeal));
 
-  function usePhoto(file: Blob, render = true) {
+  function usePhoto(file: Blob, { render = true, applyAll = isAllSample() }: { render?: boolean; applyAll?: boolean } = {}) {
     if (file.size > maxBytes) {
       status(msg('tooBig', { size: (file.size / 1e6).toFixed(1), max: Math.round(maxBytes / (1 << 20)) }), true);
       return;
     }
-    if (seals.length && !seals.some(s => s.file === file) && uniquePhotos().length >= 6 && seals.filter(s => s.file === seals[selected].file).length > 1) { status(msg('tooManyPhotos'), true); return; }
+    if (!isWrap() && !applyAll && seals.length) {
+      const nextUnique = new Set(seals.map((s, i) => (i === selected ? file : s.file)));
+      if (nextUnique.size > 6) {
+        status(msg('tooManyPhotos'), true);
+        return;
+      }
+      const totalBytes = [...nextUnique].reduce((sum, b) => sum + b.size, 0);
+      if (totalBytes > maxBytes) {
+        status(msg('tooBigTotal', { size: (totalBytes / 1e6).toFixed(1), max: Math.round(maxBytes / (1 << 20)) }), true);
+        return;
+      }
+    }
+    if (file instanceof File && file.name) {
+      const base = sanitizeSlug(file.name.replace(/\.[^.]+$/, ''));
+      if (base) fileNames.set(file, base);
+    }
     photo = file;
     Object.assign(frame, { x: 0.5, y: 0.5, zoom: 1, turn: 0 });
     zoomInput.value = '1';
     turnInput.value = '0';
+    syncOutputs();
+    syncModPlaceholder();
     if (pic.src) URL.revokeObjectURL(pic.src);
     pic.onload = drawSeal;
     pic.src = URL.createObjectURL(file);
-    if (!seals.length) resetSeals(); else { seals[selected].file = file; seals[selected].frame = {...frame}; renderSeals(); }
+    if (!seals.length) {
+      resetSeals();
+    } else if (applyAll) {
+      seals.forEach((s) => { s.file = file; s.frame = { ...frame }; });
+      renderSeals();
+    } else {
+      seals[selected].file = file;
+      seals[selected].frame = { ...frame };
+      renderSeals();
+    }
     $('framing').hidden = false;
     $<HTMLButtonElement>('forge').disabled = false;
     if (render) refresh();
@@ -558,7 +767,10 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
 
   $<HTMLInputElement>('photo').addEventListener('change', (e) => {
     const f = (e.target as HTMLInputElement).files?.[0];
-    if (f) usePhoto(f);
+    if (f) {
+      document.querySelectorAll('.tpl').forEach((o) => o.classList.remove('on'));
+      usePhoto(f);
+    }
   });
   // templates: photos go as they are; SVGs are drawn onto a canvas and sent as PNG
   async function templateBlob(src: string): Promise<Blob> {
@@ -582,8 +794,6 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
       document.querySelectorAll('.tpl').forEach((o) => o.classList.toggle('on', o === b));
       try { usePhoto(await templateBlob(b.dataset.src!)); } catch (e: any) { status(e.message, true); }
     }));
-  $<HTMLInputElement>('photo').addEventListener('change', () =>
-    document.querySelectorAll('.tpl').forEach((o) => o.classList.remove('on')));
 
   const drop = $('drop');
   drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
@@ -592,7 +802,29 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     e.preventDefault();
     drop.classList.remove('over');
     const f = e.dataTransfer?.files?.[0];
-    if (f) usePhoto(f);
+    if (f) {
+      document.querySelectorAll('.tpl').forEach((o) => o.classList.remove('on'));
+      usePhoto(f);
+    }
+  });
+
+  // Paste image from clipboard (Ctrl+V), ignoring text inputs.
+  addEventListener('paste', (e) => {
+    const target = e.target;
+    if (target instanceof Element && target.matches('input:not([type="file"]):not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), textarea, [contenteditable]')) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          document.querySelectorAll('.tpl').forEach((o) => o.classList.remove('on'));
+          usePhoto(file);
+          return;
+        }
+      }
+    }
   });
 
   // --- history: undo / redo / reset ---------------------------------------------------------
@@ -600,13 +832,19 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   // design. Undo and redo swap snapshots; reset goes back to the first one with the current photo.
   type Snapshot = {
     seals: Seal[]; selected: number; shape?: string; layout?: string; bg?: string; bgCustom: string | null;
-    ring?: string; sticker: string; stickerMax: string; ringDeg: string; relief: string;
+    ring?: string; ringCustom: string | null; sticker: string; stickerMax: string; ringDeg: string; relief: string;
+    back?: string; contrast: string; saturation: string; roughness: string;
   };
   const undoStack: Snapshot[] = [], redoStack: Snapshot[] = [];
   let current: Snapshot | null = null, initial: Snapshot | null = null, restoring = false, historyTimer = 0;
   const cloneSeals = (list: Seal[]) => list.map(s => ({ dir: [...s.dir], file: s.file, frame: { ...s.frame } }));
   const fileIds = new WeakMap<Blob, number>();
-  const fileId = (b: Blob) => { if (!fileIds.has(b)) fileIds.set(b, fileIds.size + 1); return fileIds.get(b); };
+  let nextFileId = 0;
+  const fileId = (b: Blob) => {
+    let id = fileIds.get(b);
+    if (id === undefined) { id = ++nextFileId; fileIds.set(b, id); }
+    return id;
+  };
   // what counts as a change (the selected seal alone does not)
   const keyOf = (s: Snapshot) => JSON.stringify({ ...s, selected: 0, seals: s.seals.map(x => [x.dir, fileId(x.file), x.frame]) });
 
@@ -614,7 +852,10 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     const size = $<HTMLInputElement>('sticker_deg');
     return {
       seals: cloneSeals(seals), selected, shape: checked('shape'), layout: checked('layout'), bg: checked('bg'),
-      bgCustom, ring: checked('ring'), sticker: size.value, stickerMax: size.max, ringDeg: $<HTMLInputElement>('ring_deg').value, relief: $<HTMLInputElement>('relief').value,
+      bgCustom, ring: checked('ring'), ringCustom, sticker: size.value, stickerMax: size.max,
+      ringDeg: $<HTMLInputElement>('ring_deg').value, relief: $<HTMLInputElement>('relief').value,
+      back: checked('back'), contrast: $<HTMLInputElement>('contrast').value,
+      saturation: $<HTMLInputElement>('saturation').value, roughness: $<HTMLInputElement>('roughness').value,
     };
   }
   function syncHistoryButtons() {
@@ -642,13 +883,21 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
       const prevShape = checked('shape'), prevCap = capDeg();
       const setRadio = (name: string, value?: string) =>
         document.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`).forEach((r) => (r.checked = r.value === value));
-      setRadio('shape', s.shape); setRadio('layout', s.layout); setRadio('bg', s.bg ?? ''); setRadio('ring', s.ring);
+      setRadio('shape', s.shape); setRadio('layout', s.layout); setRadio('bg', s.bg ?? ''); setRadio('ring', s.ring ?? '');
+      setRadio('back', s.back ?? 'mirror');
       bgCustom = s.bgCustom;
       if (s.bgCustom) $<HTMLInputElement>('bg-custom').value = s.bgCustom;
+      ringCustom = s.ringCustom;
+      if (s.ringCustom) $<HTMLInputElement>('ring-custom').value = s.ringCustom;
+      syncCustomSwatches();
       const size = $<HTMLInputElement>('sticker_deg');
       size.max = s.stickerMax; size.value = s.sticker;
       $<HTMLInputElement>('ring_deg').value = s.ringDeg;
       $<HTMLInputElement>('relief').value = s.relief;
+      $<HTMLInputElement>('contrast').value = s.contrast;
+      $<HTMLInputElement>('saturation').value = s.saturation;
+      $<HTMLInputElement>('roughness').value = s.roughness;
+      syncViewerUniforms();
       wasMedallions = isMedallions();
       seals = cloneSeals(s.seals);
       syncLayout();
@@ -709,9 +958,10 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     button.disabled = true;
     status(msg('forging'));
     try {
+      const slug = modSlug();
       const blob = await api.build(isWrap() ? [photo] : uniquePhotos(), params());
       const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(blob), download: 'soul_container_mod.vpk',
+        href: URL.createObjectURL(blob), download: `${slug}.vpk`,
       });
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -721,6 +971,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
         const link = $<HTMLAnchorElement>('cover-link');
         if (link.href) URL.revokeObjectURL(link.href);
         link.href = URL.createObjectURL(await viewer.cover());
+        link.download = `${slug}_cover.png`;
         $('cover').hidden = false;
       } catch { /* the .vpk is what matters; the cover is optional */ }
     } catch (e: any) {
@@ -760,6 +1011,9 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     text-align: center; font: 600 1.35rem/1.35 var(--font-display); color: var(--cream);
     background: rgba(15, 13, 11, 0.82);
   }
+  .overlay-body { display: grid; gap: 16px; justify-items: center; }
+  .overlay-body p { margin: 0; }
+  .overlay-retry { border-color: var(--gold-dim); }
   .view-tools { position: absolute; top: 19px; right: 19px; display: flex; gap: 6px; }
   .vt {
     display: inline-flex; align-items: center; gap: 6px; height: 36px; min-width: 36px; padding: 0 9px;
@@ -833,6 +1087,9 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   .tpl:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px var(--gold-dim); }
   .tpl.on { box-shadow: 0 0 0 2px var(--ink-2), 0 0 0 4px var(--gold); }
 
+  .seal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  #move-limit { margin-top: 10px; }
+
   .framing {
     margin-top: 18px; padding: 16px; display: grid; grid-template-columns: minmax(0, 190px) minmax(0, 1fr);
     gap: 18px; align-items: center; background: var(--ink-1); border: 1px solid var(--line);
@@ -857,7 +1114,12 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
   .hint { margin: 0; font-size: 0.95rem; color: var(--muted); }
 
   .range { display: grid; gap: 6px; }
+  .range-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .range .caps { color: var(--cream-2); }
+  .range output {
+    font: 600 0.9rem/1 var(--font-caps); letter-spacing: 0.04em; color: var(--gold-bright);
+    font-variant-numeric: tabular-nums;
+  }
   input[type='range'] { width: 100%; accent-color: var(--gold); }
 
   .shapes { border: 0; margin: 0 0 20px; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
@@ -901,9 +1163,55 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     width: 34px; height: 34px; padding: 0; border: 1px dashed var(--muted); border-radius: 50%;
     background: none; cursor: pointer; overflow: hidden;
   }
+  .swatch.custom.on input {
+    border-style: solid; border-color: var(--gold);
+    box-shadow: 0 0 0 2px var(--ink-2), 0 0 0 4px var(--gold);
+  }
   .swatch.custom input::-webkit-color-swatch-wrapper { padding: 3px; }
   .swatch.custom input::-webkit-color-swatch { border: 0; border-radius: 50%; }
   .swatch.custom input::-moz-color-swatch { border: 0; border-radius: 50%; }
+
+  .advanced { margin-top: 16px; background: var(--ink-1); border: 1px solid var(--line); }
+  .advanced summary {
+    list-style: none; display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 14px; cursor: pointer; color: var(--cream-2); user-select: none;
+    transition: color 0.2s;
+  }
+  .advanced summary::-webkit-details-marker { display: none; }
+  .advanced summary::after { content: '+'; font: 700 1.1rem/1 var(--font-caps); color: var(--gold); }
+  .advanced[open] summary { color: var(--cream); border-bottom: 1px solid var(--line); }
+  .advanced[open] summary::after { content: '−'; }
+  .advanced summary:hover { color: var(--gold-bright); }
+  .advanced-body { padding: 14px; display: grid; gap: 16px; }
+  .advanced-sliders { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .back-opts { border: 0; margin: 0; padding: 0; }
+  .back-opts legend { margin-bottom: 8px; color: var(--cream-2); }
+  .back-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .back-opt {
+    position: relative; display: grid; place-items: center; padding: 8px 6px; cursor: pointer;
+    font: 600 0.95rem/1.1 var(--font-caps); text-transform: uppercase; letter-spacing: 0.03em;
+    background: var(--ink-2); border: 1px solid var(--line); color: var(--cream-2);
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
+  }
+  .back-opt input { position: absolute; opacity: 0; }
+  .back-opt:hover { border-color: var(--gold-dim); color: var(--cream); }
+  .back-opt:has(input:checked) {
+    border-color: var(--gold); color: var(--gold-bright); background: rgba(196, 156, 71, 0.08);
+    box-shadow: inset 0 0 0 1px var(--gold);
+  }
+  .back-opt:has(input:focus-visible) { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
+
+  .mod-name { display: grid; gap: 6px; margin-bottom: 14px; }
+  .mod-name .caps { color: var(--cream-2); }
+  .mod-name input {
+    width: 100%; height: 42px; padding: 0 12px;
+    font: 500 0.98rem var(--font-body); color: var(--cream);
+    background: var(--ink-1); border: 1px solid var(--line);
+    transition: border-color 0.2s;
+  }
+  .mod-name input::placeholder { color: var(--muted); }
+  .mod-name input:hover { border-color: var(--gold-dim); }
+  .mod-name input:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 0 1px var(--gold); }
 
   .forge {
     width: 100%; min-height: 64px; padding: 0 24px; border: 0; cursor: pointer;
@@ -940,6 +1248,7 @@ const messages = { workshop: { sealName: w.sealName, deleteSeal: w.deleteSeal },
     .shapes { grid-template-columns: repeat(3, 1fr); }
     .layouts { grid-template-columns: repeat(2, 1fr); }
     .sticker-opts { grid-template-columns: 1fr; }
+    .advanced-sliders { grid-template-columns: 1fr; }
     .forge { font-size: 1.35rem; }
   }
 </style>
