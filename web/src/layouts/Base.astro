@@ -17,7 +17,7 @@ const lang: Lang = Astro.currentLocale && Astro.currentLocale in languages
   ? (Astro.currentLocale as Lang)
   : defaultLang;
 const { title = fmt(t.meta.title, { name: SITE.name }) } = Astro.props;
-const canonicalUrl = Astro.site ? new URL(homeUrl(lang), Astro.site).href : undefined;
+const canonicalUrl = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : undefined;
 const ogImageUrl = Astro.site ? new URL('/og-preview.png', Astro.site).href : '/og-preview.png';
 ---
 <!doctype html>

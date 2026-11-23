@@ -88,6 +88,13 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   shadow.rotation.x = -Math.PI / 2;
   scene.add(shadow);
 
+  const options = { spin: true, effects: true, pulse: true, outline: true };
+  function syncOptions() {
+    material.uniforms.uPulse.value = options.pulse ? 1 : 0;
+    if (hull) hull.visible = options.outline;
+    glow.visible = embers.visible = options.effects;
+  }
+
   function setMesh(m) {
     if (body) { orb.remove(body, hull); body.geometry.dispose(); }
     const geo = geometryFromMesh(m);
@@ -95,6 +102,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
     body = new THREE.Mesh(geo, material);
     hull = new THREE.Mesh(geo, outline);
     orb.add(hull, body);
+    syncOptions();
     shadow.scale.setScalar(radius * 2.6);
     shadow.position.y = geo.boundingBox.min.y - radius * 0.02;
     controls.target.set(0, 0, 0);
@@ -115,6 +123,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   if (mesh) setMesh(mesh);
 
   let disposed = false;
+  let mapSeq = 0, normalSeq = 0;
   function disposeTexture(tex) {
     if (!tex) return;
     tex.dispose();
@@ -122,8 +131,10 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   }
 
   async function setTextureBlob(blob) {
+    if (disposed) return;
+    const seq = ++mapSeq;
     const bitmap = await createImageBitmap(blob, { imageOrientation: 'none' });
-    if (disposed) { bitmap.close(); return; }
+    if (disposed || seq !== mapSeq) { bitmap.close(); return; }
     const tex = new THREE.Texture(bitmap);
     tex.flipY = false; // row 0 of the texture is the top pole (v = 0), as in the game
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -137,6 +148,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   }
 
   async function setNormalBlob(blob) {
+    const seq = ++normalSeq;
     if (!blob) {
       const old = material.uniforms.uNormalMap.value;
       material.uniforms.uNormalMap.value = null;
@@ -144,8 +156,9 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
       disposeTexture(old);
       return;
     }
+    if (disposed) return;
     const bitmap = await createImageBitmap(blob, { imageOrientation: 'none' });
-    if (disposed) { bitmap.close(); return; }
+    if (disposed || seq !== normalSeq) { bitmap.close(); return; }
     const tex = new THREE.Texture(bitmap); tex.flipY = false; tex.needsUpdate = true;
     const old = material.uniforms.uNormalMap.value;
     material.uniforms.uNormalMap.value = tex;
@@ -186,8 +199,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   canvas.addEventListener('pointermove', onPointerMove, true);
   canvas.addEventListener('pointerup', endDrag, true);
   canvas.addEventListener('pointercancel', endDrag, true);
-  const options = { spin: true, effects: true, pulse: true, outline: true };
-  function set(opts) { Object.assign(options, opts); }
+  function set(opts) { Object.assign(options, opts); syncOptions(); }
 
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -209,9 +221,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
     time += dt;
     if (options.spin && !dragging) { orb.rotation.y += dt * 0.35; orb.rotation.x = Math.sin(time * 0.4) * 0.35; }
     material.uniforms.uTime.value = time;
-    material.uniforms.uPulse.value = options.pulse ? 1 : 0;
-    if (hull) hull.visible = options.outline;
-    glow.visible = embers.visible = options.effects;
+    syncOptions();
     if (options.effects) embers.userData.update(dt, canvas.clientHeight * renderer.getPixelRatio(), camera.fov);
     controls.update();
     renderer.render(scene, camera);
@@ -246,6 +256,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
   // mod's cover picture in Deadlock Mod Manager.
   function cover(size = 512) {
     resize();
+    syncOptions();
     const shown = marker.visible;
     marker.visible = false;
     renderer.render(scene, camera);
@@ -263,6 +274,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
     material, // exposed for calibration (uniforms)
     snapshot() {
       resize();
+      syncOptions();
       renderer.render(scene, camera);
       return canvas.toDataURL('image/png');
     },
@@ -283,6 +295,7 @@ export function createViewer(canvas, { mesh, background = 0x14181c, onSelect, on
       material.dispose();
       outline.dispose();
       body?.geometry.dispose();
+      body = hull = null;
       shadowTex.dispose();
       shadow.geometry.dispose();
       shadow.material.dispose();
