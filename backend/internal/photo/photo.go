@@ -17,9 +17,36 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"runtime"
+	"sync"
 
 	"github.com/KJulo/Deadlock-picture-mod/backend/internal/mesh"
 )
+
+// parallelRows splits [0, rows) into horizontal strips and runs fn on each strip in parallel.
+func parallelRows(rows int, fn func(y0, y1 int)) {
+	if rows <= 0 {
+		return
+	}
+	strips := min(rows, runtime.GOMAXPROCS(0)*4)
+	if strips <= 1 {
+		fn(0, rows)
+		return
+	}
+	var wg sync.WaitGroup
+	for s := 0; s < strips; s++ {
+		y0, y1 := s*rows/strips, (s+1)*rows/strips
+		if y0 == y1 {
+			continue
+		}
+		wg.Add(1)
+		go func(y0, y1 int) {
+			defer wg.Done()
+			fn(y0, y1)
+		}(y0, y1)
+	}
+	wg.Wait()
+}
 
 // TexSize is the size of the game's colour texture.
 const TexSize = 2048
@@ -262,40 +289,42 @@ func sphereTexturePhotos(photos []*RGB, p Params, size int, atlas bool) (*image.
 	front := sticker{vec{1, 0, 0}, vec{0, 0, 1}}
 	texel := stickerTexelPhotos(photos, p)
 
-	for row := 0; row < size; row++ {
-		for col := 0; col < size; col++ {
-			u, v := (float64(col)+0.5)/float64(size), (float64(row)+0.5)/float64(size)
-			var md mesh.Vec3
-			if atlas {
-				md, _, _ = (mesh.CubeAtlas{}).TexelDir(u, v)
-			} else {
-				md, _, _ = (mesh.Equirect{}).TexelDir(u, v)
-			}
-			d := vec(md)
-
-			var px [3]float64
-			if p.Layout == "wrap" {
-				sx, sy, _ := discCoords(d, front, math.Pi/2, p.Projection)
-				back := d[0] < 0
-				if back && p.Back == "flip" {
-					sx = -sx
-				}
-				if back && p.Back == "color" {
-					px = [3]float64{float64(p.BgColor[0]), float64(p.BgColor[1]), float64(p.BgColor[2])}
+	parallelRows(size, func(row0, row1 int) {
+		for row := row0; row < row1; row++ {
+			for col := 0; col < size; col++ {
+				u, v := (float64(col)+0.5)/float64(size), (float64(row)+0.5)/float64(size)
+				var md mesh.Vec3
+				if atlas {
+					md, _, _ = (mesh.CubeAtlas{}).TexelDir(u, v)
 				} else {
-					x, y := at(sx, sy)
-					px = sampleBilinear(photo, x, y)
+					md, _, _ = (mesh.Equirect{}).TexelDir(u, v)
 				}
-			} else {
-				px = texel(d)
+				d := vec(md)
+
+				var px [3]float64
+				if p.Layout == "wrap" {
+					sx, sy, _ := discCoords(d, front, math.Pi/2, p.Projection)
+					back := d[0] < 0
+					if back && p.Back == "flip" {
+						sx = -sx
+					}
+					if back && p.Back == "color" {
+						px = [3]float64{float64(p.BgColor[0]), float64(p.BgColor[1]), float64(p.BgColor[2])}
+					} else {
+						x, y := at(sx, sy)
+						px = sampleBilinear(photo, x, y)
+					}
+				} else {
+					px = texel(d)
+				}
+				i := out.PixOffset(col, row)
+				for k := 0; k < 3; k++ {
+					out.Pix[i+k] = uint8(math.Max(0, math.Min(255, px[k]))) // truncates, like astype(uint8)
+				}
+				out.Pix[i+3] = alpha
 			}
-			i := out.PixOffset(col, row)
-			for k := 0; k < 3; k++ {
-				out.Pix[i+k] = uint8(math.Max(0, math.Min(255, px[k]))) // truncates, like astype(uint8)
-			}
-			out.Pix[i+3] = alpha
 		}
-	}
+	})
 	return out, nil
 }
 
@@ -419,26 +448,28 @@ func MedallionTexturePhotos(photos []*RGB, p Params, size int) (*image.NRGBA, er
 	alpha := uint8(math.RoundToEven(p.ColorAlpha * 255))
 	bg := [3]float64{float64(p.BgColor[0]), float64(p.BgColor[1]), float64(p.BgColor[2])}
 	out := image.NewNRGBA(image.Rect(0, 0, size, size))
-	for row := 0; row < size; row++ {
-		v := (float64(row) + 0.5) / float64(size)
-		for col := 0; col < size; col++ {
-			u := (float64(col) + 0.5) / float64(size)
-			px := bg
-			if k, x, y, ok := mesh.MedallionCell(u, v); ok {
-				if rho := math.Hypot(x, y); rho <= 1.1 {
-					if rho > 1 {
-						x, y = x/rho, y/rho
+	parallelRows(size, func(row0, row1 int) {
+		for row := row0; row < row1; row++ {
+			v := (float64(row) + 0.5) / float64(size)
+			for col := 0; col < size; col++ {
+				u := (float64(col) + 0.5) / float64(size)
+				px := bg
+				if k, x, y, ok := mesh.MedallionCell(u, v); ok {
+					if rho := math.Hypot(x, y); rho <= 1.1 {
+						if rho > 1 {
+							x, y = x/rho, y/rho
+						}
+						d := mesh.MedallionDir(k, x, y, capRad)
+						px = texel(vec(d))
 					}
-					d := mesh.MedallionDir(k, x, y, capRad)
-					px = texel(vec(d))
 				}
+				i := out.PixOffset(col, row)
+				for c := 0; c < 3; c++ {
+					out.Pix[i+c] = uint8(math.Max(0, math.Min(255, px[c])))
+				}
+				out.Pix[i+3] = alpha
 			}
-			i := out.PixOffset(col, row)
-			for c := 0; c < 3; c++ {
-				out.Pix[i+c] = uint8(math.Max(0, math.Min(255, px[c])))
-			}
-			out.Pix[i+3] = alpha
 		}
-	}
+	})
 	return out, nil
 }
