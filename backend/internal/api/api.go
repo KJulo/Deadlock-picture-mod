@@ -179,9 +179,14 @@ func (s *Server) readNormalParams(w http.ResponseWriter, r *http.Request) (photo
 	mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	switch mediaType {
 	case "application/json":
-		raw, err := io.ReadAll(io.LimitReader(r.Body, maxParamsBytes+1))
+		r.Body = http.MaxBytesReader(w, r.Body, maxParamsBytes)
+		raw, err := io.ReadAll(r.Body)
 		if err != nil {
-			return p, s.bodyError(err)
+			var mbe *http.MaxBytesError
+			if errors.As(err, &mbe) {
+				return p, &apiError{http.StatusBadRequest, "bad_params", "params too long"}
+			}
+			return p, &apiError{http.StatusBadRequest, "bad_request", "could not read request body"}
 		}
 		if err := decodeParams(raw, &p); err != nil {
 			return p, err
@@ -202,16 +207,21 @@ func (s *Server) readNormalParams(w http.ResponseWriter, r *http.Request) (photo
 			}
 			if part.FormName() == "params" {
 				raw, err := io.ReadAll(io.LimitReader(part, maxParamsBytes+1))
-				part.Close()
+				closeErr := part.Close()
 				if err != nil {
 					return p, s.bodyError(err)
+				}
+				if closeErr != nil {
+					return p, s.bodyError(closeErr)
 				}
 				if err := decodeParams(raw, &p); err != nil {
 					return p, err
 				}
 				continue
 			}
-			part.Close()
+			if err := part.Close(); err != nil {
+				return p, s.bodyError(err)
+			}
 		}
 	default:
 		return p, &apiError{http.StatusBadRequest, "bad_request", "expected application/json or multipart/form-data"}

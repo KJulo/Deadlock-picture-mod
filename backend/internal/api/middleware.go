@@ -112,8 +112,9 @@ func securityHeaders(next http.Handler) http.Handler {
 }
 
 const (
-	rateLimitStaleAfter = 2 * time.Minute
-	rateLimitMaxEntries = 10_000
+	rateLimitStaleAfter      = 2 * time.Minute
+	rateLimitMaxEntries      = 10_000
+	rateLimitCleanupThrottle = time.Second
 )
 
 type ipBucket struct {
@@ -147,17 +148,22 @@ func newIPLimiter(rpm int) *ipLimiter {
 }
 
 func (l *ipLimiter) allow(ip string) (bool, int) {
-	now := l.now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if now.Sub(l.lastCleanup) >= l.staleAfter || len(l.buckets) >= l.maxEntries {
+	now := l.now()
+	if now.Sub(l.lastCleanup) >= l.staleAfter {
 		l.cleanupLocked(now)
 	}
 	b, ok := l.buckets[ip]
 	if !ok {
 		if len(l.buckets) >= l.maxEntries {
-			l.evictOldestLocked()
+			if now.Sub(l.lastCleanup) >= rateLimitCleanupThrottle {
+				l.cleanupLocked(now)
+			}
+			if len(l.buckets) >= l.maxEntries {
+				l.evictOldestLocked()
+			}
 		}
 		b = &ipBucket{tokens: l.burst, lastSeen: now}
 		l.buckets[ip] = b
@@ -205,18 +211,24 @@ func (l *ipLimiter) evictOldestLocked() {
 	}
 }
 
-// clientIP extracts the client's IP address, preferring the first valid IP in X-Forwarded-For
-// (set by Cloud Run / reverse proxies) and falling back to RemoteAddr.
+// clientIP extracts the client's IP address, preferring the rightmost valid IP in X-Forwarded-For
+// (Cloud Run / Google Front End appends the real client IP on the right) and falling back to RemoteAddr.
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		first, _, _ := strings.Cut(xff, ",")
-		first = strings.TrimSpace(first)
-		if addr, err := netip.ParseAddr(first); err == nil {
-			return addr.Unmap().String()
-		}
-		if host, _, err := net.SplitHostPort(first); err == nil {
-			if addr, err := netip.ParseAddr(host); err == nil {
+	values := r.Header.Values("X-Forwarded-For")
+	for i := len(values) - 1; i >= 0; i-- {
+		parts := strings.Split(values[i], ",")
+		for j := len(parts) - 1; j >= 0; j-- {
+			entry := strings.TrimSpace(parts[j])
+			if entry == "" {
+				continue
+			}
+			if addr, err := netip.ParseAddr(entry); err == nil {
 				return addr.Unmap().String()
+			}
+			if host, _, err := net.SplitHostPort(entry); err == nil {
+				if addr, err := netip.ParseAddr(host); err == nil {
+					return addr.Unmap().String()
+				}
 			}
 		}
 	}

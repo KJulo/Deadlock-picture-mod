@@ -233,9 +233,16 @@ func TestCORS(t *testing.T) {
 	pre := httptest.NewRequest("OPTIONS", "/api/build", nil)
 	pre.Header.Set("Origin", "http://localhost:4321")
 	pre.Header.Set("Access-Control-Request-Method", "POST")
+	pre.Header.Set("Access-Control-Request-Headers", "Content-Type")
 	rec := do(h, pre)
 	if rec.Code != 204 || rec.Header().Get("Access-Control-Allow-Origin") != "http://localhost:4321" {
 		t.Errorf("allowed preflight: %d %v", rec.Code, rec.Header())
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Headers"); got != "Content-Type" {
+		t.Errorf("Access-Control-Allow-Headers = %q, want %q", got, "Content-Type")
+	}
+	if got := rec.Header().Get("Access-Control-Expose-Headers"); !strings.Contains(got, "Retry-After") {
+		t.Errorf("Access-Control-Expose-Headers = %q, want Retry-After", got)
 	}
 	evil := httptest.NewRequest("GET", "/api/defaults", nil)
 	evil.Header.Set("Origin", "https://evil.example")
@@ -384,9 +391,11 @@ func TestNormalTextureJSON(t *testing.T) {
 	}{
 		{"unknown field", jsonPost("/api/texture?size=256&map=normal", `{"relife":0.5}`), 400, "bad_params"},
 		{"invalid param", jsonPost("/api/texture?size=256&map=normal", `{"relief":2}`), 400, "bad_params"},
+		{"empty body", jsonPost("/api/texture?size=256&map=normal", ""), 400, "bad_params"},
 		{"malformed json", jsonPost("/api/texture?size=256&map=normal", `{`), 400, "bad_params"},
 		{"trailing data", jsonPost("/api/texture?size=256&map=normal", `{}{}`), 400, "bad_params"},
-		{"too long", jsonPost("/api/texture?size=256&map=normal", `{"layout":"`+strings.Repeat("a", maxParamsBytes)+`"}`), 400, "bad_params"},
+		{"oversized json", jsonPost("/api/texture?size=256&map=normal", `{"layout":"`+strings.Repeat("a", maxParamsBytes)+`"}`), 400, "bad_params"},
+		{"missing content type", httptest.NewRequest(http.MethodPost, "/api/texture?size=256&map=normal", strings.NewReader("{}")), 400, "bad_request"},
 		{"bad content type", func() *http.Request {
 			r := httptest.NewRequest(http.MethodPost, "/api/texture?size=256&map=normal", strings.NewReader("{}"))
 			r.Header.Set("Content-Type", "text/plain")
@@ -426,6 +435,12 @@ func TestNormalTextureMultipart(t *testing.T) {
 			}
 		})
 	}
+	t.Run("oversized skipped part", func(t *testing.T) {
+		rec := do(h, upload(t, "/api/texture?size=256&map=normal", make([]byte, 2<<20), `{"relief":0.5}`))
+		if rec.Code != http.StatusRequestEntityTooLarge || errorCode(t, rec) != "photo_too_large" {
+			t.Errorf("got %d %s, want 413 photo_too_large", rec.Code, rec.Body.String())
+		}
+	})
 }
 
 func TestRateLimit(t *testing.T) {
@@ -435,22 +450,24 @@ func TestRateLimit(t *testing.T) {
 	})
 
 	const origin = "http://localhost:4321"
-	const ipA = "203.0.113.10, 10.0.0.1"
+	const ipA = "198.51.100.1, 203.0.113.10"
+	const ipASpoofed = "198.51.100.2, 203.0.113.10"
 	const ipB = "203.0.113.11"
 
-	// Burst of 2 texture requests succeeds for IP A.
-	for i := 0; i < 2; i++ {
+	// Burst of 2 texture requests succeeds for IP A (even with different spoofed leading XFF entries).
+	for i, xff := range []string{ipA, ipASpoofed} {
 		req := jsonPost("/api/texture?size=256&map=normal", `{}`)
-		req.Header.Set("X-Forwarded-For", ipA)
+		req.Header.Set("X-Forwarded-For", xff)
 		req.Header.Set("Origin", origin)
 		if rec := do(h, req); rec.Code != http.StatusOK {
 			t.Fatalf("texture #%d: got %d %s", i+1, rec.Code, rec.Body.String())
 		}
 	}
 
-	// 3rd texture request from IP A gets 429 with Retry-After, rate_limited code, and CORS headers.
+	// 3rd texture request from IP A (with another spoofed prefix) gets 429 with Retry-After, rate_limited code, and CORS headers.
 	req := jsonPost("/api/texture?size=256&map=normal", `{}`)
-	req.Header.Set("X-Forwarded-For", ipA)
+	req.Header.Add("X-Forwarded-For", "198.51.100.3")
+	req.Header.Add("X-Forwarded-For", "203.0.113.10")
 	req.Header.Set("Origin", origin)
 	rec := do(h, req)
 	if rec.Code != http.StatusTooManyRequests || errorCode(t, rec) != "rate_limited" {
@@ -464,7 +481,7 @@ func TestRateLimit(t *testing.T) {
 		t.Errorf("CORS header missing on 429: got %q, want %q", got, origin)
 	}
 
-	// Separate IP is unaffected.
+	// Separate IP (single-entry XFF) is unaffected.
 	reqB := jsonPost("/api/texture?size=256&map=normal", `{}`)
 	reqB.Header.Set("X-Forwarded-For", ipB)
 	if rec := do(h, reqB); rec.Code != http.StatusOK {
@@ -478,7 +495,7 @@ func TestRateLimit(t *testing.T) {
 		t.Fatalf("1st build: got %d %s", rec.Code, rec.Body.String())
 	}
 	buildReq2 := upload(t, "/api/build", testPhoto(t), "")
-	buildReq2.Header.Set("X-Forwarded-For", ipA)
+	buildReq2.Header.Set("X-Forwarded-For", ipASpoofed)
 	buildReq2.Header.Set("Origin", origin)
 	recBuild := do(h, buildReq2)
 	if recBuild.Code != http.StatusTooManyRequests || errorCode(t, recBuild) != "rate_limited" {
@@ -528,18 +545,48 @@ func TestIPLimiterRefillAndCleanup(t *testing.T) {
 		t.Fatal("request after refill should pass")
 	}
 
-	// Cap maxEntries: adding more distinct IPs evicts the oldest so size never exceeds maxEntries.
-	for i, ip := range []string{"2.2.2.2", "3.3.3.3", "4.4.4.4"} {
-		now = now.Add(time.Second * time.Duration(i+1))
-		lim.allow(ip)
+	// Fill up to maxEntries (3).
+	now = now.Add(time.Second)
+	lim.allow("2.2.2.2")
+	now = now.Add(time.Second)
+	lim.allow("3.3.3.3")
+	if len(lim.buckets) != lim.maxEntries {
+		t.Fatalf("expected %d buckets, got %d", lim.maxEntries, len(lim.buckets))
 	}
-	if len(lim.buckets) > lim.maxEntries {
-		t.Fatalf("buckets grew past maxEntries: %d > %d", len(lim.buckets), lim.maxEntries)
+
+	// Existing IP fast-path at maxEntries must NOT trigger cleanupLocked.
+	lastCleanupBefore := lim.lastCleanup
+	now = now.Add(30 * time.Second)
+	if ok, _ := lim.allow("2.2.2.2"); !ok {
+		t.Fatal("existing IP at maxEntries should pass")
+	}
+	if !lim.lastCleanup.Equal(lastCleanupBefore) {
+		t.Fatalf("existing IP at maxEntries triggered cleanup: lastCleanup moved from %v to %v", lastCleanupBefore, lim.lastCleanup)
+	}
+
+	// Adding a new IP at maxEntries runs throttled cleanup and evicts the oldest if still full.
+	now = now.Add(2 * time.Second)
+	lim.allow("4.4.4.4")
+	if len(lim.buckets) != lim.maxEntries {
+		t.Fatalf("buckets grew past maxEntries: %d != %d", len(lim.buckets), lim.maxEntries)
+	}
+	if !lim.lastCleanup.Equal(now) {
+		t.Fatalf("expected cleanup on new IP at maxEntries, lastCleanup=%v want %v", lim.lastCleanup, now)
+	}
+	// Another new IP within the 1s cleanup throttle skips cleanupLocked and evicts oldest directly.
+	throttledCleanup := lim.lastCleanup
+	now = now.Add(100 * time.Millisecond)
+	lim.allow("5.5.5.5")
+	if len(lim.buckets) != lim.maxEntries {
+		t.Fatalf("buckets grew past maxEntries: %d != %d", len(lim.buckets), lim.maxEntries)
+	}
+	if !lim.lastCleanup.Equal(throttledCleanup) {
+		t.Fatalf("cleanup should have been throttled within 1s: lastCleanup=%v want %v", lim.lastCleanup, throttledCleanup)
 	}
 
 	// Advancing past staleAfter evicts all stale entries on next call.
 	now = now.Add(lim.staleAfter + time.Second)
-	lim.allow("5.5.5.5")
+	lim.allow("6.6.6.6")
 	if len(lim.buckets) != 1 {
 		t.Fatalf("expected stale buckets evicted, got %d", len(lim.buckets))
 	}
@@ -548,22 +595,25 @@ func TestIPLimiterRefillAndCleanup(t *testing.T) {
 func TestClientIP(t *testing.T) {
 	cases := []struct {
 		name   string
-		xff    string
+		xff    []string
 		remote string
 		want   string
 	}{
-		{"xff first ip", "203.0.113.5, 10.0.0.1", "127.0.0.1:9999", "203.0.113.5"},
-		{"xff ipv6", "2001:db8::1, 10.0.0.1", "127.0.0.1:9999", "2001:db8::1"},
-		{"xff garbage falls back", "not-an-ip, 10.0.0.1", "198.51.100.7:4321", "198.51.100.7"},
-		{"remote ipv6 hostport", "", "[::1]:4321", "::1"},
-		{"remote bare ip", "", "198.51.100.8", "198.51.100.8"},
+		{"xff spoofed prefix uses rightmost", []string{"198.51.100.99, 203.0.113.5"}, "127.0.0.1:9999", "203.0.113.5"},
+		{"xff single entry", []string{"203.0.113.5"}, "127.0.0.1:9999", "203.0.113.5"},
+		{"xff multiple header lines", []string{"198.51.100.99", "198.51.100.100, 203.0.113.6"}, "127.0.0.1:9999", "203.0.113.6"},
+		{"xff ipv6 rightmost", []string{"198.51.100.99, 2001:db8::1"}, "127.0.0.1:9999", "2001:db8::1"},
+		{"xff skips trailing garbage", []string{"203.0.113.5, not-an-ip"}, "198.51.100.7:4321", "203.0.113.5"},
+		{"xff all garbage falls back", []string{"not-an-ip, also-bad"}, "198.51.100.7:4321", "198.51.100.7"},
+		{"remote ipv6 hostport", nil, "[::1]:4321", "::1"},
+		{"remote bare ip", nil, "198.51.100.8", "198.51.100.8"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/texture", nil)
 			req.RemoteAddr = c.remote
-			if c.xff != "" {
-				req.Header.Set("X-Forwarded-For", c.xff)
+			for _, v := range c.xff {
+				req.Header.Add("X-Forwarded-For", v)
 			}
 			if got := clientIP(req); got != c.want {
 				t.Errorf("clientIP = %q, want %q", got, c.want)
