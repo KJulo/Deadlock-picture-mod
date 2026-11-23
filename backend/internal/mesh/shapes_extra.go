@@ -2,6 +2,29 @@ package mesh
 
 import "math"
 
+var (
+	d20Planes     [10]Vec3
+	brilliantAxes [8][2]float64
+)
+
+func init() {
+	phi := (1 + math.Sqrt(5)) / 2
+	inv := 1 / phi
+	raw := [10]Vec3{
+		{1, 1, 1}, {1, 1, -1}, {1, -1, 1}, {-1, 1, 1},
+		{0, inv, phi}, {0, inv, -phi},
+		{inv, phi, 0}, {inv, -phi, 0},
+		{phi, 0, inv}, {phi, 0, -inv},
+	}
+	for i, p := range raw {
+		d20Planes[i] = p.Normalize()
+	}
+	for i := range brilliantAxes {
+		a := float64(i) * math.Pi / 4
+		brilliantAxes[i] = [2]float64{math.Cos(a), math.Sin(a)}
+	}
+}
+
 // roundedPlanes approximates the maximum of opposing plane projections with an even p-norm.
 func roundedPlanes(d Vec3, planes []Vec3, power float64) float64 {
 	sum := 0.0
@@ -12,13 +35,7 @@ func roundedPlanes(d Vec3, planes []Vec3, power float64) float64 {
 }
 
 func d20Shape(d Vec3) float64 {
-	phi := (1 + math.Sqrt(5)) / 2
-	inv := 1 / phi
-	planes := []Vec3{{1, 1, 1}, {1, 1, -1}, {1, -1, 1}, {-1, 1, 1}, {0, inv, phi}, {0, inv, -phi}, {inv, phi, 0}, {inv, -phi, 0}, {phi, 0, inv}, {phi, 0, -inv}}
-	for i := range planes {
-		planes[i] = planes[i].Normalize()
-	}
-	return 0.78 / roundedPlanes(d, planes, 16)
+	return 0.78 / roundedPlanes(d, d20Planes[:], 16)
 }
 
 func capsuleShape(d Vec3) float64 {
@@ -57,17 +74,15 @@ func heartShape(d Vec3) float64 {
 
 func brilliantShape(d Vec3) float64 {
 	// Smooth plane maxima form the table, eight crown facets and a pointed pavilion.
-	planes := []float64{d[2] / 0.58, -d[2] / 0.88}
-	for i := 0; i < 8; i++ {
-		a := float64(i) * math.Pi / 4
-		side := d[0]*math.Cos(a) + d[1]*math.Sin(a)
-		planes = append(planes, side/0.88+d[2]*0.55, side/0.88-d[2]*0.75)
-	}
 	// Softplus p-norm over positive projections keeps all edges differentiable.
-	sum := 0.0
-	for _, p := range planes {
+	softplus12 := func(p float64) float64 {
 		q := (p + math.Sqrt(p*p+0.0004)) / 2
-		sum += math.Pow(q, 12)
+		return math.Pow(q, 12)
+	}
+	sum := softplus12(d[2]/0.58) + softplus12(-d[2]/0.88)
+	for _, ax := range brilliantAxes {
+		side := (d[0]*ax[0] + d[1]*ax[1]) / 0.88
+		sum += softplus12(side+d[2]*0.55) + softplus12(side-d[2]*0.75)
 	}
 	return 0.91 / math.Pow(sum, 1.0/12)
 }
